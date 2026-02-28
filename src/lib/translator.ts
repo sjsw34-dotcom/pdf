@@ -1,18 +1,58 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { PDFDocument } from "pdf-lib";
 import { getGlossaryForPrompt } from "./saju-glossary";
+
+const CHUNK_SIZE = 30;
+const INTER_CHUNK_DELAY_MS = 10000; // 10s between chunks
+const RATE_LIMIT_WAIT_MS = 95000;   // fallback wait (95s > server's 90s retry-after)
+const MAX_RETRIES = 4;
 
 const SYSTEM_PROMPT = `You are an expert translator specializing in Korean Saju (四柱, Four Pillars of Destiny) analysis documents. Translate the provided Korean saju PDF into clear, natural English.
 
-## Rules
-1. Translate ALL content — including text inside charts, tables, and diagrams
-2. For saju terms use: English Name (漢字, Korean romanization) — e.g. "Day Master (日干, Ilgan)", "Wood Element (木, Mok)"
-3. Write natural, flowing English for Western readers
-4. Preserve document structure: use ## for major sections, ### for subsections
-5. Convert tables/charts to readable text — describe values clearly
-6. Do NOT output garbled characters or encoding artifacts — only clean, meaningful text
-7. Do NOT add commentary about what you're doing — output only the translation
+## CRITICAL: Handling Encoding Artifacts
+This PDF uses custom font encoding. Some characters may render as garbled symbols such as:
+•›  Xì  vx  u2  NY  kc[˜  ˜ßy^  hC‚±kº  N¥  ]ñ  ¼ÅHÀ´  and similar patterns.
 
-## Saju Terminology Reference
+These are NOT real text — they are encoding artifacts. Rules:
+- NEVER include garbled characters in your output
+- Based on context and position in the document, determine the original Korean/Chinese meaning and translate it
+- If a garbled sequence appears where a Heavenly Stem should be, write the correct name (Gap, Eul, Byeong, Jeong, Mu, Gi, Gyeong, Sin, Im, Gye)
+- If it appears where an Earthly Branch should be, write the correct name (Ja, Chuk, In, Myo, Jin, Sa, O, Mi, Sin, Yu, Sul, Hae)
+- If meaning cannot be determined, omit the garbled sequence entirely
+
+## Saju Chart Formatting
+When you encounter the Four Pillars chart (사주 원국표), format it as a clear text table:
+
+Example output format:
+┌─────────────────────────────────────────────────────┐
+│              FOUR PILLARS BIRTH CHART               │
+├──────────────┬──────────────┬──────────────┬────────┤
+│  Hour Pillar │  Day Pillar  │ Month Pillar │  Year  │
+│   (시주)      │   (일주)      │   (월주)      │ (년주) │
+├──────────────┼──────────────┼──────────────┼────────┤
+│  Ten Gods    │  Day Master  │  Ten Gods    │Ten Gods│
+│  (십성)       │   (일간)      │  (십성)       │ (십성) │
+├──────────────┼──────────────┼──────────────┼────────┤
+│ Heavenly Stem│Heavenly Stem │Heavenly Stem │H. Stem │
+│  Im (壬)     │  Gyeong (庚) │   Mu (戊)    │Eul (乙)│
+├──────────────┼──────────────┼──────────────┼────────┤
+│Earthly Branch│Earthly Branch│Earthly Branch│E. Brnch│
+│   O (午)     │   In (寅)    │   Ja (子)    │Myo (卯)│
+└──────────────┴──────────────┴──────────────┴────────┘
+
+For element analysis tables (용신분석, 오행분석), format them as labeled lists:
+• Favorable Element (용신): Metal (金)
+• Joyful Element (희신): Earth (土)
+• Unfavorable Element (기신): Fire (火)
+
+## Translation Rules
+1. Translate ALL content — every section, table, chart, diagram text
+2. For saju terms: English Name (漢字, Korean) — e.g. "Day Master (日干, Ilgan)"
+3. Write natural, flowing English for Western readers
+4. Use ## for major sections, ### for subsections
+5. Output ONLY clean, readable translation — no commentary about what you are doing
+
+## Saju Terminology
 ${getGlossaryForPrompt()}`;
 
 export interface TranslationResult {
@@ -24,26 +64,81 @@ export async function translateSajuPDF(
   pdfBuffer: Buffer
 ): Promise<TranslationResult> {
   const client = new Anthropic();
-  const base64PDF = pdfBuffer.toString("base64");
+  const chunks = await splitPDFIntoChunks(pdfBuffer, CHUNK_SIZE);
 
-  const translatedText = await doTranslation(client, base64PDF);
-  const sections = parseIntoSections(translatedText);
+  const chunkTexts: string[] = [];
+  for (let i = 0; i < chunks.length; i++) {
+    if (i > 0) await sleep(INTER_CHUNK_DELAY_MS);
+    const base64Chunk = chunks[i].toString("base64");
+    const text = await translateChunkWithRetry(
+      client,
+      base64Chunk,
+      i + 1,
+      chunks.length
+    );
+    chunkTexts.push(text);
+  }
 
-  return { translatedText, sections };
+  const combined = chunkTexts.join("\n\n");
+  const cleaned = cleanTranslation(combined);
+  const sections = parseIntoSections(cleaned);
+  return { translatedText: cleaned, sections };
 }
 
-async function doTranslation(
+async function translateChunkWithRetry(
   client: Anthropic,
-  base64PDF: string
+  base64PDF: string,
+  chunkNum: number,
+  totalChunks: number
 ): Promise<string> {
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      return await translateChunk(client, base64PDF, chunkNum, totalChunks);
+    } catch (err: unknown) {
+      const status =
+        typeof err === "object" && err !== null && "status" in err
+          ? (err as { status: number }).status
+          : 0;
+      if (status === 429 && attempt < MAX_RETRIES - 1) {
+        // Use retry-after header from server if available, otherwise fall back
+        const retryAfterHeader =
+          typeof err === "object" && err !== null && "headers" in err
+            ? (err as { headers?: { get?: (k: string) => string | null } })
+                .headers?.get?.("retry-after")
+            : null;
+        const waitMs = retryAfterHeader
+          ? (parseInt(retryAfterHeader) + 10) * 1000
+          : RATE_LIMIT_WAIT_MS;
+        console.log(
+          `Rate limited on chunk ${chunkNum}. Waiting ${waitMs / 1000}s (retry-after: ${retryAfterHeader ?? "n/a"})...`
+        );
+        await sleep(waitMs);
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("Max retries exceeded");
+}
+
+async function translateChunk(
+  client: Anthropic,
+  base64PDF: string,
+  chunkNum: number,
+  totalChunks: number
+): Promise<string> {
+  const isMultiChunk = totalChunks > 1;
+  const basePrompt = isMultiChunk
+    ? `This is part ${chunkNum} of ${totalChunks} of a Korean saju analysis. Translate all content on these pages into clean English. Do not include any garbled or unreadable characters in your output.`
+    : "Translate all content of this Korean saju analysis PDF into clean English. Do not include any garbled or unreadable characters in your output.";
+
   let fullText = "";
   let continueFrom: string | null = null;
-  const MAX_ITERATIONS = 4;
 
-  for (let i = 0; i < MAX_ITERATIONS; i++) {
+  for (let i = 0; i < 4; i++) {
     const userPrompt = continueFrom
-      ? `The document has already been partially translated. The last section translated was: "${continueFrom}". Now continue translating from the NEXT section onwards. Output ONLY the sections that come AFTER "${continueFrom}" — do not repeat any already-translated content.`
-      : "Translate the complete content of this Korean saju analysis PDF into English. Include every section, table, chart description, and any visible text.";
+      ? `Continue from after the section "${continueFrom}". Output ONLY remaining sections — do not repeat any content.`
+      : basePrompt;
 
     const response = await client.messages.create({
       model: "claude-sonnet-4-6",
@@ -53,7 +148,6 @@ async function doTranslation(
         {
           role: "user",
           content: [
-                    // PDF document block — SDK types don't expose this yet for newer models
             /* eslint-disable @typescript-eslint/no-explicit-any */
             ...[{
               type: "document",
@@ -74,26 +168,71 @@ async function doTranslation(
     if (block.type !== "text") break;
 
     fullText += (fullText ? "\n\n" : "") + block.text;
-
-    // If not truncated, we're done
     if (response.stop_reason !== "max_tokens") break;
 
-    // Find the last ## section heading to continue from there
     const headings = fullText.match(/^##\s+.+/gm);
-    const lastHeading = headings?.[headings.length - 1];
-    continueFrom = lastHeading ? lastHeading.replace(/^##\s+/, "").trim() : null;
+    continueFrom = headings
+      ? headings[headings.length - 1].replace(/^##\s+/, "").trim()
+      : null;
     if (!continueFrom) break;
   }
 
   return fullText;
 }
 
+/**
+ * Remove PDF custom-font encoding artifacts from the translated text.
+ * These artifacts appear as sequences mixing standard ASCII with
+ * Latin-1 Supplement / Windows-1252 characters (U+0080–U+024F).
+ * Chinese (U+4E00–U+9FFF) and Korean (UAC00–UD7A3) are preserved.
+ */
+function cleanTranslation(text: string): string {
+  return (
+    text
+      // Remove sequences: ASCII letters mixed with extended-Latin artifact chars
+      .replace(
+        /[A-Za-z0-9\[\]]{0,5}[\u0080-\u024F]+[A-Za-z0-9\[\]]{0,5}/g,
+        " "
+      )
+      // Remove any remaining extended-Latin artifact chars
+      .replace(/[\u0080-\u00BF\u00C0-\u024F]/g, " ")
+      // Clean up empty parentheses that result from removing garbled content
+      .replace(/\(\s*,?\s*\)/g, "")
+      .replace(/\(\s*\)/g, "")
+      // Normalize whitespace
+      .replace(/[ \t]{2,}/g, " ")
+      .split("\n")
+      .map((line) => line.trimEnd())
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+  );
+}
+
+async function splitPDFIntoChunks(
+  buffer: Buffer,
+  chunkSize: number
+): Promise<Buffer[]> {
+  const pdfDoc = await PDFDocument.load(buffer);
+  const totalPages = pdfDoc.getPageCount();
+  if (totalPages <= chunkSize) return [buffer];
+
+  const chunks: Buffer[] = [];
+  for (let start = 0; start < totalPages; start += chunkSize) {
+    const end = Math.min(start + chunkSize, totalPages);
+    const chunk = await PDFDocument.create();
+    const indices = Array.from({ length: end - start }, (_, i) => start + i);
+    const pages = await chunk.copyPages(pdfDoc, indices);
+    pages.forEach((p) => chunk.addPage(p));
+    chunks.push(Buffer.from(await chunk.save()));
+  }
+  return chunks;
+}
+
 function parseIntoSections(
   text: string
 ): { title: string; content: string }[] {
   const sections: { title: string; content: string }[] = [];
-
-  // Split on lines that start with ##
   const parts = text.split(/\n(?=##\s)/);
 
   for (const part of parts) {
@@ -101,15 +240,11 @@ function parseIntoSections(
     if (!trimmed) continue;
 
     if (trimmed.startsWith("## ")) {
-      const newlineIdx = trimmed.indexOf("\n");
-      const title =
-        newlineIdx > -1
-          ? trimmed.slice(3, newlineIdx).trim()
-          : trimmed.slice(3).trim();
-      const content = newlineIdx > -1 ? trimmed.slice(newlineIdx + 1).trim() : "";
+      const nl = trimmed.indexOf("\n");
+      const title = (nl > -1 ? trimmed.slice(3, nl) : trimmed.slice(3)).trim();
+      const content = nl > -1 ? trimmed.slice(nl + 1).trim() : "";
       if (title) sections.push({ title, content });
     } else {
-      // Pre-section content (intro paragraph etc.)
       if (sections.length === 0) {
         sections.push({ title: "Overview", content: trimmed });
       } else {
@@ -118,9 +253,11 @@ function parseIntoSections(
     }
   }
 
-  if (sections.length === 0) {
-    sections.push({ title: "Saju Analysis", content: text });
-  }
+  return sections.length > 0
+    ? sections.filter((s) => s.content.trim().length > 0)
+    : [{ title: "Saju Analysis", content: text }];
+}
 
-  return sections.filter((s) => s.content.trim().length > 0);
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

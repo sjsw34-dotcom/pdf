@@ -8,8 +8,19 @@ const MARGIN = 20;
 const PAGE_WIDTH = 210;
 const PAGE_HEIGHT = 297;
 const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
-const LINE_HEIGHT = 6;
-const SECTION_GAP = 10;
+const LINE_HEIGHT = 7;
+const SECTION_GAP = 12;
+
+// Font sizes
+const FONT_TITLE = 26;       // Cover title
+const FONT_SUBTITLE = 14;    // Cover subtitle
+const FONT_DATE = 12;        // Cover date
+const FONT_H1 = 18;          // Section titles (## headings)
+const FONT_H2 = 15;          // Intro sub-headings
+const FONT_BODY = 12;        // Body text (minimum 12pt)
+const FONT_TABLE = 10;       // Table cells (slightly smaller for fit)
+const FONT_TABLE_HEAD = 10;  // Table headers
+const FONT_PAGE_NUM = 10;    // Page numbers
 
 function registerCJKFont(doc: jsPDF): void {
   const fontPath = path.join(process.cwd(), "src/lib/fonts/NotoSansKR-Regular.ttf");
@@ -64,17 +75,17 @@ export function generatePDF(translation: TranslationResult): Buffer {
   doc.setFont("NotoSansKR", "normal");
 
   // Title page
-  doc.setFontSize(22);
+  doc.setFontSize(FONT_TITLE);
   const title = "Saju (Four Pillars) Analysis";
   const titleWidth = doc.getTextWidth(title);
   doc.text(title, (PAGE_WIDTH - titleWidth) / 2, 60);
 
-  doc.setFontSize(12);
+  doc.setFontSize(FONT_SUBTITLE);
   const subtitle = "Translated from Korean";
   const subtitleWidth = doc.getTextWidth(subtitle);
-  doc.text(subtitle, (PAGE_WIDTH - subtitleWidth) / 2, 72);
+  doc.text(subtitle, (PAGE_WIDTH - subtitleWidth) / 2, 75);
 
-  doc.setFontSize(10);
+  doc.setFontSize(FONT_DATE);
   doc.setTextColor(120, 120, 120);
   const dateStr = `Generated on ${new Date().toLocaleDateString("en-US", {
     year: "numeric",
@@ -82,12 +93,16 @@ export function generatePDF(translation: TranslationResult): Buffer {
     day: "numeric",
   })}`;
   const dateWidth = doc.getTextWidth(dateStr);
-  doc.text(dateStr, (PAGE_WIDTH - dateWidth) / 2, 82);
+  doc.text(dateStr, (PAGE_WIDTH - dateWidth) / 2, 88);
   doc.setTextColor(0, 0, 0);
 
   doc.setDrawColor(60, 60, 60);
   doc.setLineWidth(0.5);
-  doc.line(MARGIN + 30, 90, PAGE_WIDTH - MARGIN - 30, 90);
+  doc.line(MARGIN + 30, 96, PAGE_WIDTH - MARGIN - 30, 96);
+
+  // Introduction page
+  doc.addPage();
+  renderIntroPage(doc);
 
   // Content pages
   doc.addPage();
@@ -104,7 +119,7 @@ export function generatePDF(translation: TranslationResult): Buffer {
     // Section title (strip # markers)
     const cleanTitle = stripMarkdownHeadings(section.title);
     y = renderSectionTitle(doc, cleanTitle, y);
-    y += 4;
+    y += 5;
 
     // Section content (strip # markers, render tables)
     const cleanContent = stripMarkdownHeadings(section.content);
@@ -128,7 +143,7 @@ export function generatePDF(translation: TranslationResult): Buffer {
   const totalPages = doc.getNumberOfPages();
   for (let i = 2; i <= totalPages; i++) {
     doc.setPage(i);
-    doc.setFontSize(9);
+    doc.setFontSize(FONT_PAGE_NUM);
     doc.setTextColor(150, 150, 150);
     const pageText = `${i - 1} / ${totalPages - 1}`;
     const pw = doc.getTextWidth(pageText);
@@ -139,8 +154,119 @@ export function generatePDF(translation: TranslationResult): Buffer {
   return Buffer.from(doc.output("arraybuffer"));
 }
 
+function renderIntroPage(doc: jsPDF): void {
+  let y = 35;
+
+  // Header
+  doc.setFontSize(FONT_H2);
+  doc.setFont("NotoSansKR", "bold");
+  doc.setTextColor(30, 30, 80);
+  const header = "We study destiny! I am Ksaju Kim from Destiny Therapy.";
+  const headerLines = doc.splitTextToSize(header, CONTENT_WIDTH);
+  for (const line of headerLines) {
+    const lw = doc.getTextWidth(line);
+    doc.text(line, (PAGE_WIDTH - lw) / 2, y);
+    y += LINE_HEIGHT + 3;
+  }
+
+  // Decorative line
+  y += 4;
+  doc.setDrawColor(30, 30, 80);
+  doc.setLineWidth(0.4);
+  doc.line(MARGIN + 20, y, PAGE_WIDTH - MARGIN - 20, y);
+  y += SECTION_GAP;
+
+  // "What is Saju?" heading
+  doc.setFontSize(FONT_H1);
+  doc.setFont("NotoSansKR", "bold");
+  doc.setTextColor(30, 30, 80);
+  const q1 = "What is Saju?";
+  const q1w = doc.getTextWidth(q1);
+  doc.text(q1, (PAGE_WIDTH - q1w) / 2, y);
+  y += LINE_HEIGHT + 3;
+  doc.setDrawColor(30, 30, 80);
+  doc.setLineWidth(0.4);
+  const q1uw = doc.getTextWidth(q1);
+  doc.line((PAGE_WIDTH - q1uw) / 2, y - 2, (PAGE_WIDTH + q1uw) / 2, y - 2);
+  y += 5;
+
+  y = renderIntroBody(doc, [
+    "Saju is an analytical method rooted in traditional Eastern philosophy and statistical principles. It interprets an individual's personality and destiny based on the year, month, day, and hour of birth. Saju (\u56DB\u67F1) literally means \"Four Pillars,\" each representing the Year (\u5E74), Month (\u6708), Day (\u65E5), and Hour (\u6642).",
+    "",
+    "Unlike fortune-telling based on subjective intuition, Saju pursues objective interpretation grounded in statistical data accumulated over centuries and the theory of Yin-Yang and the Five Elements (\u9670\u967D\u4E94\u884C). Yin and Yang represent the principle of dividing all phenomena into two opposing natures\u2014light and darkness, day and night. The Five Elements consist of Wood (\u6728), Fire (\u706B), Earth (\u571F), Metal (\u91D1), and Water (\u6C34), and through the way these elements influence one another, our lives are interpreted.",
+  ], y);
+
+  y += SECTION_GAP;
+
+  // "What can Saju reveal?" heading
+  doc.setFontSize(FONT_H1);
+  doc.setFont("NotoSansKR", "bold");
+  doc.setTextColor(30, 30, 80);
+  const q2 = "What can Saju reveal?";
+  const q2w = doc.getTextWidth(q2);
+  doc.text(q2, (PAGE_WIDTH - q2w) / 2, y);
+  y += LINE_HEIGHT + 3;
+  doc.setDrawColor(30, 30, 80);
+  doc.setLineWidth(0.4);
+  const q2uw = doc.getTextWidth(q2);
+  doc.line((PAGE_WIDTH - q2uw) / 2, y - 2, (PAGE_WIDTH + q2uw) / 2, y - 2);
+  y += 5;
+
+  y = renderIntroBody(doc, [
+    "Saju is not simply a tool for predicting the future. Its true significance lies in helping you better understand yourself by analyzing your personality, strengths and weaknesses, and the flow of your life. For example, you can use it as a reference when making important decisions or to find direction for addressing areas where you may be lacking.",
+    "",
+    "At Destiny Therapy, we aim to help you discover your own unique story through Saju and empower you to make better choices. If Saju analysis has ever felt difficult or rigid, don't worry\u2014we will walk you through the path of your life in an approachable and friendly way.",
+  ], y);
+
+  y += SECTION_GAP + 4;
+
+  // Closing
+  doc.setFontSize(FONT_H2);
+  doc.setFont("NotoSansKR", "bold");
+  doc.setTextColor(30, 30, 80);
+  const closing = "Shall we begin your personal Saju story?";
+  const cw = doc.getTextWidth(closing);
+  doc.text(closing, (PAGE_WIDTH - cw) / 2, y);
+
+  // Bottom decorative line
+  y += 10;
+  doc.setDrawColor(30, 30, 80);
+  doc.setLineWidth(0.4);
+  doc.line(MARGIN + 20, y, PAGE_WIDTH - MARGIN - 20, y);
+
+  // Reset
+  doc.setTextColor(0, 0, 0);
+  doc.setFont("NotoSansKR", "normal");
+}
+
+/** Render intro body paragraphs with the same line spacing as renderContent */
+function renderIntroBody(doc: jsPDF, paragraphs: string[], y: number): number {
+  doc.setFontSize(FONT_BODY);
+  doc.setFont("NotoSansKR", "normal");
+  doc.setTextColor(50, 50, 50);
+
+  for (const para of paragraphs) {
+    if (!para) {
+      y += 4;
+      continue;
+    }
+    const lines = doc.splitTextToSize(para, CONTENT_WIDTH);
+    for (const line of lines) {
+      if (y > PAGE_HEIGHT - MARGIN) {
+        doc.addPage();
+        y = MARGIN;
+      }
+      doc.text(line, MARGIN, y);
+      y += LINE_HEIGHT;
+    }
+    y += 1.5;
+  }
+
+  return y;
+}
+
 function renderSectionTitle(doc: jsPDF, title: string, y: number): number {
-  doc.setFontSize(14);
+  doc.setFontSize(FONT_H1);
   doc.setFont("NotoSansKR", "bold");
   doc.setTextColor(30, 30, 80);
 
@@ -151,12 +277,12 @@ function renderSectionTitle(doc: jsPDF, title: string, y: number): number {
       y = MARGIN;
     }
     doc.text(line, MARGIN, y);
-    y += LINE_HEIGHT + 2;
+    y += LINE_HEIGHT + 3;
   }
 
   doc.setDrawColor(30, 30, 80);
   doc.setLineWidth(0.4);
-  doc.line(MARGIN, y - 2, MARGIN + 50, y - 2);
+  doc.line(MARGIN, y - 2, MARGIN + 60, y - 2);
 
   doc.setTextColor(0, 0, 0);
   doc.setFont("NotoSansKR", "normal");
@@ -165,7 +291,7 @@ function renderSectionTitle(doc: jsPDF, title: string, y: number): number {
 }
 
 function renderContent(doc: jsPDF, content: string, y: number): number {
-  doc.setFontSize(10.5);
+  doc.setFontSize(FONT_BODY);
   doc.setFont("NotoSansKR", "normal");
 
   const allLines = content.split("\n");
@@ -177,7 +303,7 @@ function renderContent(doc: jsPDF, content: string, y: number): number {
     // Skip horizontal rules
     if (/^-{3,}$/.test(trimmed)) {
       i++;
-      y += 2;
+      y += 3;
       continue;
     }
 
@@ -194,7 +320,7 @@ function renderContent(doc: jsPDF, content: string, y: number): number {
       const table = parseMarkdownTable(tableLines);
       if (table) {
         y = renderTable(doc, table.headers, table.rows, y);
-        y += 4;
+        y += 5;
         continue;
       }
       // If parsing failed, fall through and render as text
@@ -203,18 +329,16 @@ function renderContent(doc: jsPDF, content: string, y: number): number {
 
     // Empty line
     if (!trimmed) {
-      y += 3;
+      y += 4;
       i++;
       continue;
     }
 
-    // Subsection heading (bold line without # prefix — already stripped)
-    // Check for lines that are short and look like titles
     const isBullet = /^[-\u2022*]\s/.test(trimmed);
     const indent = isBullet ? 6 : 0;
     const width = CONTENT_WIDTH - indent;
 
-    // Strip bold markers
+    // Strip bold/italic markers
     const cleanText = trimmed.replace(/\*\*/g, "").replace(/\*([^*]+)\*/g, "$1");
 
     const wrappedLines = doc.splitTextToSize(cleanText, width);
@@ -235,7 +359,7 @@ function renderContent(doc: jsPDF, content: string, y: number): number {
       y += LINE_HEIGHT;
     }
 
-    y += 1;
+    y += 1.5;
     i++;
   }
 
@@ -248,7 +372,6 @@ function renderTable(
   rows: string[][],
   startY: number
 ): number {
-  // Check if we need a new page
   if (startY > PAGE_HEIGHT - 50) {
     doc.addPage();
     startY = MARGIN;
@@ -262,8 +385,8 @@ function renderTable(
     styles: {
       font: "NotoSansKR",
       fontStyle: "normal",
-      fontSize: 9,
-      cellPadding: 2.5,
+      fontSize: FONT_TABLE,
+      cellPadding: 3,
       lineColor: [200, 200, 200],
       lineWidth: 0.3,
       overflow: "linebreak",
@@ -272,7 +395,7 @@ function renderTable(
       fillColor: [40, 40, 90],
       textColor: [255, 255, 255],
       fontStyle: "bold",
-      fontSize: 9,
+      fontSize: FONT_TABLE_HEAD,
     },
     alternateRowStyles: {
       fillColor: [245, 245, 250],
@@ -280,7 +403,6 @@ function renderTable(
     tableWidth: CONTENT_WIDTH,
   });
 
-  // Get the Y position after the table
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (doc as any).lastAutoTable?.finalY ?? startY + 30;
 }

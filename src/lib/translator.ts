@@ -181,28 +181,24 @@ async function translateChunk(
 }
 
 /**
- * Remove PDF custom-font encoding artifacts from the translated text.
- * These artifacts appear as sequences mixing standard ASCII with
- * Latin-1 Supplement / Windows-1252 characters (U+0080–U+024F).
- * Chinese (U+4E00–U+9FFF) and Korean (UAC00–UD7A3) are preserved.
+ * Whitelist-based cleanup: keep ONLY allowed characters, remove everything else.
+ * Allowed: printable ASCII (0x20-0x7E), newlines, tabs,
+ *          CJK Unified Ideographs (木火土金水 etc.), Korean syllables (가-힣).
+ * This removes ALL encoding artifacts regardless of their Unicode range.
  */
 function cleanTranslation(text: string): string {
   return (
     text
-      // Remove sequences: ASCII letters mixed with extended-Latin artifact chars
-      .replace(
-        /[A-Za-z0-9\[\]]{0,5}[\u0080-\u024F]+[A-Za-z0-9\[\]]{0,5}/g,
-        " "
-      )
-      // Remove any remaining extended-Latin artifact chars
-      .replace(/[\u0080-\u00BF\u00C0-\u024F]/g, " ")
-      // Clean up empty parentheses that result from removing garbled content
+      // Whitelist: keep printable ASCII, newlines, CJK, Korean only
+      .replace(/[^\x09\x0A\x0D\x20-\x7E\u2022\u4E00-\u9FFF\uAC00-\uD7A3]/g, " ")
+      // Clean up empty or near-empty parentheses: (), ( ), (,), ( , )
       .replace(/\(\s*,?\s*\)/g, "")
-      .replace(/\(\s*\)/g, "")
+      // Clean up orphaned commas in parentheses: (Wood, ) → (Wood)
+      .replace(/,\s*\)/g, ")")
       // Normalize whitespace
       .replace(/[ \t]{2,}/g, " ")
       .split("\n")
-      .map((line) => line.trimEnd())
+      .map((line) => line.trim())
       .join("\n")
       .replace(/\n{3,}/g, "\n\n")
       .trim()

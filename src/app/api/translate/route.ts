@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { translateSajuPDF } from "@/lib/translator";
-import { generatePDF } from "@/lib/pdf-generator";
+import { generatePDF } from "@/lib/pdf-generator-v2";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 

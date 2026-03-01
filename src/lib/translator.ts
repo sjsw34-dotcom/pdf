@@ -49,8 +49,14 @@ For element analysis tables (용신분석, 오행분석), format them as labeled
 1. Translate ALL content — every section, table, chart, diagram text
 2. For saju terms: English Name (漢字, Korean) — e.g. "Day Master (日干, Ilgan)"
 3. Write natural, flowing English for Western readers
-4. Use ## for major sections, ### for subsections
+4. Use # for PART-level headings, ## for chapters, ### for subsections
 5. Output ONLY clean, readable translation — no commentary about what you are doing
+
+## Proper Nouns — Do NOT translate or explain
+- 사주팔자 (四柱八字) → write as **Saju Palja** (proper noun, no parenthetical explanation)
+- 사주 (四柱) → write as **Saju** (no explanation; the introduction page already covers this)
+- 팔자 (八字) → write as **Palja**
+These terms are brand identity for this report. The reader will find explanations in the introduction. Do not append meanings like "(Four Pillars of Destiny)" or "(Eight Characters)" after them.
 
 ## Saju Terminology
 ${getGlossaryForPrompt()}`;
@@ -229,15 +235,16 @@ function parseIntoSections(
   text: string
 ): { title: string; content: string }[] {
   const sections: { title: string; content: string }[] = [];
-  const parts = text.split(/\n(?=##\s)/);
+  // Split only on single # (PART level) — ## and ### stay inside content
+  const parts = text.split(/\n(?=# [^#])/);
 
   for (const part of parts) {
     const trimmed = part.trim();
     if (!trimmed) continue;
 
-    if (trimmed.startsWith("## ")) {
+    if (/^# [^#]/.test(trimmed)) {
       const nl = trimmed.indexOf("\n");
-      const title = (nl > -1 ? trimmed.slice(3, nl) : trimmed.slice(3)).trim();
+      const title = (nl > -1 ? trimmed.slice(2, nl) : trimmed.slice(2)).trim();
       const content = nl > -1 ? trimmed.slice(nl + 1).trim() : "";
       if (title) sections.push({ title, content });
     } else {

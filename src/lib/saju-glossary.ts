@@ -49,8 +49,9 @@ export const fiveElements: GlossaryEntry[] = [
 
 // 사주 구조 용어
 export const structuralTerms: GlossaryEntry[] = [
-  { korean: "사주", hanja: "四柱", english: "Four Pillars (四柱, Saju)" },
-  { korean: "팔자", hanja: "八字", english: "Eight Characters (八字)" },
+  { korean: "사주팔자", hanja: "四柱八字", english: "Saju Palja", description: "proper noun — no explanation needed, intro page covers it" },
+  { korean: "사주", hanja: "四柱", english: "Saju" },
+  { korean: "팔자", hanja: "八字", english: "Palja" },
   { korean: "년주", hanja: "年柱", english: "Year Pillar (年柱)" },
   { korean: "월주", hanja: "月柱", english: "Month Pillar (月柱)" },
   { korean: "일주", hanja: "日柱", english: "Day Pillar (日柱)" },

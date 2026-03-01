@@ -234,9 +234,14 @@ async function splitPDFIntoChunks(
 function parseIntoSections(
   text: string
 ): { title: string; content: string }[] {
+  // Demote non-PART single-# headings (CHAPTER, monthly/annual fortune, etc.)
+  // to ## so they render as chapter headings within a PART section instead of
+  // creating their own dedicated page each.
+  const normalized = text.replace(/^# (?!PART\b)/gim, "## ");
+
   const sections: { title: string; content: string }[] = [];
   // Split only on single # (PART level) — ## and ### stay inside content
-  const parts = text.split(/\n(?=# [^#])/);
+  const parts = normalized.split(/\n(?=# [^#])/);
 
   for (const part of parts) {
     const trimmed = part.trim();

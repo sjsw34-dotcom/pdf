@@ -518,6 +518,10 @@ function renderTable(doc: jsPDF, headers: string[], rows: string[][], startY: nu
 export function generatePDF(translation: TranslationResult): Buffer {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
 
+  // Hint to PDF viewers to use continuous (single-column scroll) layout.
+  // Respected by most desktop viewers; mobile viewers may still show page gaps.
+  doc.setDisplayMode("fullwidth", "continuous", "UseNone");
+
   registerCJKFont(doc);
   doc.setFont("NotoSansKR", "normal");
 

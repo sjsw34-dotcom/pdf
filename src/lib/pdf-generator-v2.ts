@@ -520,7 +520,7 @@ export function generatePDF(translation: TranslationResult): Buffer {
 
   // Hint to PDF viewers to use continuous (single-column scroll) layout.
   // Respected by most desktop viewers; mobile viewers may still show page gaps.
-  doc.setDisplayMode("fullwidth", "continuous", "UseNone");
+  doc.setDisplayMode("fullwidth", "continuous", "UseOutlines");
 
   registerCJKFont(doc);
   doc.setFont("NotoSansKR", "normal");

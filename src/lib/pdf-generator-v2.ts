@@ -204,12 +204,12 @@ function renderCoverPage(doc: jsPDF, bgImage: string | null, clientName: string)
   doc.setLineWidth(0.5);
   doc.line(MARGIN + 25, 80, PAGE_W - MARGIN - 25, 80);
 
-  // Main title: DESTINY ANALYSIS REPORT (30pt, two lines)
+  // Main title: DESTINY ANALYSIS REPORT (24pt, two lines)
   doc.setFont("NotoSansKR", "bold");
-  doc.setFontSize(30);
+  doc.setFontSize(24);
   setColor(doc, C_NAVY, "text");
   centeredText(doc, "DESTINY ANALYSIS", 98);
-  centeredText(doc, "REPORT", 112);
+  centeredText(doc, "REPORT", 110);
 
   // Korean subtitle
   doc.setFont("NotoSansKR", "normal");
@@ -229,9 +229,9 @@ function renderCoverPage(doc: jsPDF, bgImage: string | null, clientName: string)
   setColor(doc, C_LIGHT, "text");
   centeredText(doc, "Prepared for", 196);
 
-  // Client name (28pt)
+  // Client name (20pt)
   doc.setFont("NotoSansKR", "bold");
-  doc.setFontSize(28);
+  doc.setFontSize(20);
   setColor(doc, C_NAVY, "text");
   const displayName = clientName || "—";
   centeredText(doc, displayName, 214);
@@ -482,10 +482,10 @@ function renderContent(doc: jsPDF, content: string, y: number): number {
           continue;
         }
         const cleanToc = tocLine.replace(/\*\*/g, "").replace(/\*([^*]+)\*/g, "$1");
-        const wrapped = doc.splitTextToSize(cleanToc, _cW);
+        const wrapped = doc.splitTextToSize(cleanToc, _cW - 8);
         for (const line of wrapped) {
           if (y > CONTENT_BOTTOM) { addPageWithBg(doc); y = CONTENT_TOP; }
-          doc.text(line, _mL, y);
+          doc.text(line, _mL + 8, y);
           y += LINE_H;
         }
         y += 1;
@@ -527,8 +527,9 @@ function renderContent(doc: jsPDF, content: string, y: number): number {
     if (!trimmed) { y += 4; i++; continue; }
 
     const isBullet = /^[-•*]\s/.test(trimmed);
-    const indent = isBullet ? 7 : 0;
-    const width = _cW - indent;
+    const baseX = _mL + 8;
+    const bulletIndent = isBullet ? 5 : 0;
+    const width = _cW - 8 - bulletIndent;
     const cleanText = trimmed.replace(/\*\*/g, "").replace(/\*([^*]+)\*/g, "$1");
     const wrappedLines = doc.splitTextToSize(cleanText, width);
 
@@ -536,11 +537,11 @@ function renderContent(doc: jsPDF, content: string, y: number): number {
       if (y > CONTENT_BOTTOM) { addPageWithBg(doc); y = CONTENT_TOP; }
       if (isBullet && line === wrappedLines[0]) {
         setColor(doc, C_GOLD, "text");
-        doc.text("•", _mL + 2, y);
+        doc.text("•", baseX, y);
         setColor(doc, C_TEXT, "text");
-        doc.text(line.replace(/^[-•*]\s*/, ""), _mL + indent, y);
+        doc.text(line.replace(/^[-•*]\s*/, ""), baseX + bulletIndent, y);
       } else {
-        doc.text(line, _mL + indent, y);
+        doc.text(line, baseX + (isBullet ? bulletIndent : 0), y);
       }
       y += LINE_H;
     }

@@ -170,10 +170,10 @@ function renderCoverPage(doc: jsPDF, bgImage: string | null, clientName: string)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (doc as any).setGState((doc as any).GState({ opacity: 0.88 }));
     setColor(doc, C_CREAM, "fill");
-    // Title box: y=58–142
-    doc.roundedRect(MARGIN + 6, 58, PAGE_W - 2 * (MARGIN + 6), 84, 4, 4, "F");
-    // Client box: y=178–248
-    doc.roundedRect(MARGIN + 6, 178, PAGE_W - 2 * (MARGIN + 6), 70, 4, 4, "F");
+    // Title box: y=64–140  (narrower, tighter)
+    doc.roundedRect(MARGIN + 18, 64, PAGE_W - 2 * (MARGIN + 18), 76, 4, 4, "F");
+    // Client box: y=184–242  (narrower, tighter)
+    doc.roundedRect(MARGIN + 18, 184, PAGE_W - 2 * (MARGIN + 18), 58, 4, 4, "F");
     doc.restoreGraphicsState();
   }
 

@@ -22,8 +22,6 @@ const CONTENT_TOP = TOP_BANNER_H + 14; // below page header
 const CONTENT_BOTTOM = PAGE_H - BOTTOM_STRIP_H - 12; // above page footer
 
 // ─── Font sizes ────────────────────────────────────────────────────────────────
-const SZ_COVER_TITLE = 24;
-const SZ_COVER_SUB = 13;
 const SZ_H1 = 19;      // # PART title (page heading)
 const SZ_H2 = 16;      // ## chapter headings within content
 const SZ_H3 = 14;      // ### sub-chapter headings (bold, same size as body)

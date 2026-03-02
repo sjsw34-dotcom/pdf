@@ -162,28 +162,27 @@ function parseMarkdownTable(lines: string[]): { headers: string[]; rows: string[
 }
 
 // ─── Cover page ───────────────────────────────────────────────────────────────
-function renderCoverPage(doc: jsPDF, dateStr: string, bgImage: string | null): void {
-  // ── Background image (drawn first) ──────────────────────────────────────────
-  if (bgImage) {
-    drawCoverBackground(doc, bgImage);
+function renderCoverPage(doc: jsPDF, bgImage: string | null, clientName: string): void {
+  // ── Background image ────────────────────────────────────────────────────────
+  if (bgImage) drawCoverBackground(doc, bgImage);
 
-    // Semi-transparent cream boxes protect title + author text from background
+  // ── Protection boxes (cream, semi-transparent) ─────────────────────────────
+  if (bgImage) {
     doc.saveGraphicsState();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (doc as any).setGState((doc as any).GState({ opacity: 0.88 }));
     setColor(doc, C_CREAM, "fill");
-    // Title area box  (gold rule at y=70 … gold rule at y≈100)
-    doc.roundedRect(MARGIN + 6, 62, PAGE_W - 2 * (MARGIN + 6), 45, 3, 3, "F");
-    // Author area box (gold rule at y=210 … date at y≈255)
-    doc.roundedRect(MARGIN + 6, 204, PAGE_W - 2 * (MARGIN + 6), 58, 3, 3, "F");
+    // Title box: y=58–142
+    doc.roundedRect(MARGIN + 6, 58, PAGE_W - 2 * (MARGIN + 6), 84, 4, 4, "F");
+    // Client box: y=178–248
+    doc.roundedRect(MARGIN + 6, 178, PAGE_W - 2 * (MARGIN + 6), 70, 4, 4, "F");
     doc.restoreGraphicsState();
   }
 
-  // Top banner (navy) — drawn on top of background
+  // ── Top banner (navy) ───────────────────────────────────────────────────────
   setColor(doc, C_NAVY, "fill");
   doc.rect(0, 0, PAGE_W, TOP_BANNER_H, "F");
 
-  // Brand name in banner
   doc.setFont("NotoSansKR", "bold");
   doc.setFontSize(9);
   setColor(doc, C_GOLD, "text");
@@ -195,71 +194,65 @@ function renderCoverPage(doc: jsPDF, dateStr: string, bgImage: string | null): v
   const enW = doc.getTextWidth(BRAND_EN);
   doc.text(BRAND_EN, PAGE_W - MARGIN - enW, 10.5);
 
-  // ── Main title block ──────────────────────────────────────────────────────
-  let y = 70;
+  // ── Title block ─────────────────────────────────────────────────────────────
+  // Small label: 사주팔자 · Four Pillars of Destiny
+  doc.setFont("NotoSansKR", "normal");
+  doc.setFontSize(12);
+  setColor(doc, C_GOLD, "text");
+  centeredText(doc, "사주팔자  ·  Four Pillars of Destiny", 74);
 
-  // Thin gold rule above title
+  // Narrow gold rule under label
   setColor(doc, C_GOLD, "draw");
-  doc.setLineWidth(0.6);
-  doc.line(MARGIN + 15, y, PAGE_W - MARGIN - 15, y);
-  y += 10;
+  doc.setLineWidth(0.5);
+  doc.line(MARGIN + 25, 80, PAGE_W - MARGIN - 25, 80);
 
-  // Title
+  // Main title: DESTINY ANALYSIS REPORT (30pt, two lines)
   doc.setFont("NotoSansKR", "bold");
-  doc.setFontSize(SZ_COVER_TITLE);
+  doc.setFontSize(30);
   setColor(doc, C_NAVY, "text");
-  centeredText(doc, "Saju Analysis Report", y);
-  y += 11;
+  centeredText(doc, "DESTINY ANALYSIS", 98);
+  centeredText(doc, "REPORT", 112);
 
-  // Subtitle
+  // Korean subtitle
   doc.setFont("NotoSansKR", "normal");
-  doc.setFontSize(SZ_COVER_SUB);
-  setColor(doc, C_MID, "text");
-  centeredText(doc, "Four Pillars of Destiny · 사주팔자", y);
-  y += 9;
+  doc.setFontSize(15);
+  setColor(doc, C_GOLD, "text");
+  centeredText(doc, "운명 분석서", 126);
 
-  // Thin gold rule below title
+  // Full-width gold rule under title block
   setColor(doc, C_GOLD, "draw");
   doc.setLineWidth(0.6);
-  doc.line(MARGIN + 15, y, PAGE_W - MARGIN - 15, y);
+  doc.line(MARGIN + 6, 136, PAGE_W - MARGIN - 6, 136);
 
-  // ── Author block (lower third) ────────────────────────────────────────────
-  const blockY = 210;
-
-  // Full-width gold rule
-  setColor(doc, C_GOLD, "draw");
-  doc.setLineWidth(0.4);
-  doc.line(MARGIN, blockY, PAGE_W - MARGIN, blockY);
-
-  // "Prepared by" label
+  // ── Client block ─────────────────────────────────────────────────────────────
+  // "Prepared for" label
   doc.setFont("NotoSansKR", "normal");
-  doc.setFontSize(SZ_SMALL);
+  doc.setFontSize(10);
   setColor(doc, C_LIGHT, "text");
-  centeredText(doc, "Prepared by", blockY + 10);
+  centeredText(doc, "Prepared for", 196);
 
-  // Consultant name
+  // Client name (28pt)
   doc.setFont("NotoSansKR", "bold");
-  doc.setFontSize(16);
+  doc.setFontSize(28);
   setColor(doc, C_NAVY, "text");
-  centeredText(doc, CONSULTANT, blockY + 20);
+  const displayName = clientName || "—";
+  centeredText(doc, displayName, 214);
 
   // Brand line
   doc.setFont("NotoSansKR", "normal");
-  doc.setFontSize(10);
+  doc.setFontSize(11);
   setColor(doc, C_GOLD, "text");
-  centeredText(doc, `${BRAND_KR}  ·  ${BRAND_EN}`, blockY + 31);
+  centeredText(doc, `${BRAND_KR}  ·  ${BRAND_EN}`, 232);
 
-  // Date
-  doc.setFont("NotoSansKR", "normal");
-  doc.setFontSize(SZ_SMALL);
-  setColor(doc, C_LIGHT, "text");
-  centeredText(doc, dateStr, blockY + 44);
+  // Thin gold rule under brand
+  setColor(doc, C_GOLD, "draw");
+  doc.setLineWidth(0.4);
+  doc.line(MARGIN + 6, 240, PAGE_W - MARGIN - 6, 240);
 
-  // Bottom strip (navy)
+  // ── Bottom strip (navy) ─────────────────────────────────────────────────────
   setColor(doc, C_NAVY, "fill");
   doc.rect(0, PAGE_H - BOTTOM_STRIP_H, PAGE_W, BOTTOM_STRIP_H, "F");
 
-  // Reset colors
   setColor(doc, C_TEXT, "text");
 }
 
@@ -618,12 +611,8 @@ export async function generatePDF(translation: TranslationResult): Promise<Buffe
   registerCJKFont(doc);
   doc.setFont("NotoSansKR", "normal");
 
-  const dateStr = new Date().toLocaleDateString("en-US", {
-    year: "numeric", month: "long", day: "numeric",
-  });
-
   // ── Page 1: Cover ────────────────────────────────────────────────────────
-  renderCoverPage(doc, dateStr, bgCover);
+  renderCoverPage(doc, bgCover, translation.clientName ?? "");
 
   // ── Pages 2+: Introduction + Content ─────────────────────────────────────
   // Pattern per non-cover page:

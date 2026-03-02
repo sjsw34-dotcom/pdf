@@ -156,6 +156,13 @@ ${getGlossaryForPrompt()}`;
 export interface TranslationResult {
   translatedText: string;
   sections: { title: string; content: string }[];
+  clientName: string; // extracted from "Dear [Name]," greeting
+}
+
+function extractClientName(text: string): string {
+  // Matches "Dear 전찬미," or "Dear Jeon Chan-mi," (up to 50 chars before the comma)
+  const match = text.match(/\bDear\s+([^,\n]{1,50}),/);
+  return match ? match[1].trim() : "";
 }
 
 export async function translateSajuPDF(
@@ -180,7 +187,7 @@ export async function translateSajuPDF(
   const combined = chunkTexts.join("\n\n");
   const cleaned = cleanTranslation(combined);
   const sections = parseIntoSections(cleaned);
-  return { translatedText: cleaned, sections };
+  return { translatedText: cleaned, sections, clientName: extractClientName(cleaned) };
 }
 
 async function translateChunkWithRetry(

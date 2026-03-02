@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     // Claude reads the PDF directly — handles text, images, and custom fonts
     const translation = await translateSajuPDF(buffer);
 
-    const pdfBuffer = generatePDF(translation);
+    const pdfBuffer = await generatePDF(translation);
 
     return new NextResponse(new Uint8Array(pdfBuffer), {
       status: 200,

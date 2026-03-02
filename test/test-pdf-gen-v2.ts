@@ -31,7 +31,8 @@ const result: TranslationResult = {
   sections: filtered.length > 0 ? filtered : [{ title: "Saju Analysis", content: text }],
 };
 
-const pdfBuffer = generatePDF(result);
-fs.writeFileSync("test/result-v2.pdf", pdfBuffer);
-console.log("PDF generated:", pdfBuffer.length, "bytes");
-console.log("Sections:", filtered.length);
+generatePDF(result).then((pdfBuffer) => {
+  fs.writeFileSync("test/result-v2.pdf", pdfBuffer);
+  console.log("PDF generated:", pdfBuffer.length, "bytes");
+  console.log("Sections:", filtered.length);
+});

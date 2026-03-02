@@ -3,6 +3,7 @@ import autoTable from "jspdf-autotable";
 import { TranslationResult } from "./translator";
 import * as fs from "fs";
 import * as path from "path";
+import sharp from "sharp";
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
 const MARGIN = 22;
@@ -45,6 +46,73 @@ const C_MID: [number, number, number] = [100, 100, 100];
 const C_LIGHT: [number, number, number] = [170, 170, 170];
 const C_WHITE: [number, number, number] = [255, 255, 255];
 const C_ALT_ROW: [number, number, number] = [245, 244, 250];
+
+// ─── Background image settings ────────────────────────────────────────────────
+const STRIP_W   = 40;   // mm — side strip width on content pages (≈ 1/5 of page)
+const STRIP_PAD = 4;    // mm — gap between strip edge and text area
+const BG_COVER_OPACITY = 0.70; // cover background image opacity (0–1)
+
+const BG_ASSETS_DIR = path.join(process.cwd(), "public/assets");
+
+// Dynamic text-area layout — updated before each non-cover page is rendered.
+// Content functions use these instead of the fixed MARGIN / CONTENT_W constants.
+let _mL = MARGIN;      // effective left text margin for the current page
+let _cW = CONTENT_W;   // effective text content width for the current page
+
+// Called automatically whenever a new page is added inside rendering functions.
+// Set by generatePDF so overflow pages also receive the correct strip.
+let _pageBgPainter: (() => void) | null = null;
+
+function addPageWithBg(doc: jsPDF): void {
+  doc.addPage();
+  if (_pageBgPainter) _pageBgPainter();
+}
+
+// ─── Background image helpers ─────────────────────────────────────────────────
+/** Full A4 at 150 dpi (1240 × 1754 px) — used for the cover page. */
+async function loadAndCompressBgImage(filename: string): Promise<string | null> {
+  const filePath = path.join(BG_ASSETS_DIR, filename);
+  if (!fs.existsSync(filePath)) return null;
+  let buf = await sharp(filePath)
+    .resize(1240, 1754, { fit: "cover", position: "centre" })
+    .jpeg({ quality: 85 })
+    .toBuffer();
+  if (buf.length > 1024 * 1024)
+    buf = await sharp(buf).jpeg({ quality: 60 }).toBuffer();
+  return buf.toString("base64");
+}
+
+/**
+ * Crops and resizes image to strip dimensions at 150 dpi (STRIP_W mm × A4 height).
+ * Takes the centre column of the source image so the most relevant part shows.
+ */
+async function loadAndCompressStripImage(filename: string): Promise<string | null> {
+  const filePath = path.join(BG_ASSETS_DIR, filename);
+  if (!fs.existsSync(filePath)) return null;
+  const stripPx = Math.round(STRIP_W * 150 / 25.4); // ≈ 236 px wide
+  let buf = await sharp(filePath)
+    .resize(stripPx, 1754, { fit: "cover", position: "centre" })
+    .jpeg({ quality: 85 })
+    .toBuffer();
+  if (buf.length > 400 * 1024)
+    buf = await sharp(buf).jpeg({ quality: 65 }).toBuffer();
+  return buf.toString("base64");
+}
+
+/** Draws the full-page cover background at BG_COVER_OPACITY. */
+function drawCoverBackground(doc: jsPDF, imageBase64: string): void {
+  doc.saveGraphicsState();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (doc as any).setGState((doc as any).GState({ opacity: BG_COVER_OPACITY }));
+  doc.addImage(`data:image/jpeg;base64,${imageBase64}`, "JPEG", 0, 0, PAGE_W, PAGE_H, "bg-cover");
+  doc.restoreGraphicsState();
+}
+
+/** Draws the decorative side strip on a content page (fully opaque). */
+function drawImageStrip(doc: jsPDF, imageBase64: string, alias: string, side: "left" | "right"): void {
+  const x = side === "left" ? 0 : PAGE_W - STRIP_W;
+  doc.addImage(`data:image/jpeg;base64,${imageBase64}`, "JPEG", x, 0, STRIP_W, PAGE_H, alias);
+}
 
 // ─── Font registration ────────────────────────────────────────────────────────
 function registerCJKFont(doc: jsPDF): void {
@@ -94,8 +162,24 @@ function parseMarkdownTable(lines: string[]): { headers: string[]; rows: string[
 }
 
 // ─── Cover page ───────────────────────────────────────────────────────────────
-function renderCoverPage(doc: jsPDF, dateStr: string): void {
-  // Top banner (navy)
+function renderCoverPage(doc: jsPDF, dateStr: string, bgImage: string | null): void {
+  // ── Background image (drawn first) ──────────────────────────────────────────
+  if (bgImage) {
+    drawCoverBackground(doc, bgImage);
+
+    // Semi-transparent cream boxes protect title + author text from background
+    doc.saveGraphicsState();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (doc as any).setGState((doc as any).GState({ opacity: 0.88 }));
+    setColor(doc, C_CREAM, "fill");
+    // Title area box  (gold rule at y=70 … gold rule at y≈100)
+    doc.roundedRect(MARGIN + 6, 62, PAGE_W - 2 * (MARGIN + 6), 45, 3, 3, "F");
+    // Author area box (gold rule at y=210 … date at y≈255)
+    doc.roundedRect(MARGIN + 6, 204, PAGE_W - 2 * (MARGIN + 6), 58, 3, 3, "F");
+    doc.restoreGraphicsState();
+  }
+
+  // Top banner (navy) — drawn on top of background
   setColor(doc, C_NAVY, "fill");
   doc.rect(0, 0, PAGE_W, TOP_BANNER_H, "F");
 
@@ -236,7 +320,7 @@ function renderIntroPage(doc: jsPDF): void {
   // Gold center rule
   setColor(doc, C_GOLD, "draw");
   doc.setLineWidth(0.5);
-  doc.line(MARGIN + 30, y, PAGE_W - MARGIN - 30, y);
+  doc.line(_mL + 8, y, PAGE_W - _mL - 8, y);
   y += SECTION_GAP;
 
   y = renderIntroSection(doc, "What is Saju?", [
@@ -268,13 +352,13 @@ function renderIntroPage(doc: jsPDF): void {
 function renderIntroSection(doc: jsPDF, heading: string, paragraphs: string[], y: number): number {
   // Left gold accent bar
   setColor(doc, C_GOLD, "fill");
-  doc.rect(MARGIN, y - 4, 3, 11, "F");
+  doc.rect(_mL, y - 4, 3, 11, "F");
 
   // Heading
   doc.setFont("NotoSansKR", "bold");
   doc.setFontSize(SZ_H2);
   setColor(doc, C_NAVY, "text");
-  doc.text(heading, MARGIN + 8, y + 4);
+  doc.text(heading, _mL + 8, y + 4);
   y += 14;
 
   // Body
@@ -284,10 +368,10 @@ function renderIntroSection(doc: jsPDF, heading: string, paragraphs: string[], y
 
   for (const para of paragraphs) {
     if (!para) { y += 4; continue; }
-    const lines = doc.splitTextToSize(para, CONTENT_W - 8);
+    const lines = doc.splitTextToSize(para, _cW - 8);
     for (const line of lines) {
-      if (y > CONTENT_BOTTOM) { doc.addPage(); y = CONTENT_TOP; }
-      doc.text(line, MARGIN + 8, y);
+      if (y > CONTENT_BOTTOM) { addPageWithBg(doc); y = CONTENT_TOP; }
+      doc.text(line, _mL + 8, y);
       y += LINE_H;
     }
     y += 1.5;
@@ -300,16 +384,16 @@ function renderIntroSection(doc: jsPDF, heading: string, paragraphs: string[], y
 function renderSectionTitle(doc: jsPDF, title: string, y: number): number {
   // Gold accent bar
   setColor(doc, C_GOLD, "fill");
-  doc.rect(MARGIN, y - 4, 3, 13, "F");
+  doc.rect(_mL, y - 4, 3, 13, "F");
 
   doc.setFont("NotoSansKR", "bold");
   doc.setFontSize(SZ_H1);
   setColor(doc, C_NAVY, "text");
 
-  const lines = doc.splitTextToSize(title, CONTENT_W - 8);
+  const lines = doc.splitTextToSize(title, _cW - 8);
   for (const line of lines) {
-    if (y > CONTENT_BOTTOM) { doc.addPage(); y = CONTENT_TOP; }
-    doc.text(line, MARGIN + 8, y + 4);
+    if (y > CONTENT_BOTTOM) { addPageWithBg(doc); y = CONTENT_TOP; }
+    doc.text(line, _mL + 8, y + 4);
     y += LINE_H + 3;
   }
 
@@ -320,20 +404,20 @@ function renderSectionTitle(doc: jsPDF, title: string, y: number): number {
 
 // ─── Inline heading renderers (## and ### within content) ─────────────────────
 function renderContentH2(doc: jsPDF, title: string, y: number): number {
-  if (y > CONTENT_BOTTOM - 20) { doc.addPage(); y = CONTENT_TOP; }
+  if (y > CONTENT_BOTTOM - 20) { addPageWithBg(doc); y = CONTENT_TOP; }
   y += 4; // breathing room above
 
   // Small gold accent bar
   setColor(doc, C_GOLD, "fill");
-  doc.rect(MARGIN, y - 4, 3, 10, "F");
+  doc.rect(_mL, y - 4, 3, 10, "F");
 
   doc.setFont("NotoSansKR", "bold");
   doc.setFontSize(SZ_H2);
   setColor(doc, C_NAVY, "text");
-  const lines = doc.splitTextToSize(title, CONTENT_W - 8);
+  const lines = doc.splitTextToSize(title, _cW - 8);
   for (const line of lines) {
-    if (y > CONTENT_BOTTOM) { doc.addPage(); y = CONTENT_TOP; }
-    doc.text(line, MARGIN + 8, y + 3);
+    if (y > CONTENT_BOTTOM) { addPageWithBg(doc); y = CONTENT_TOP; }
+    doc.text(line, _mL + 8, y + 3);
     y += LINE_H + 1;
   }
 
@@ -344,7 +428,7 @@ function renderContentH2(doc: jsPDF, title: string, y: number): number {
 }
 
 function renderContentH3(doc: jsPDF, title: string, y: number): number {
-  if (y > CONTENT_BOTTOM - 14) { doc.addPage(); y = CONTENT_TOP; }
+  if (y > CONTENT_BOTTOM - 14) { addPageWithBg(doc); y = CONTENT_TOP; }
   y += 3;
 
   doc.setFont("NotoSansKR", "bold");
@@ -354,12 +438,12 @@ function renderContentH3(doc: jsPDF, title: string, y: number): number {
   // Tiny gold dash prefix
   setColor(doc, C_GOLD, "draw");
   doc.setLineWidth(1.2);
-  doc.line(MARGIN, y - 1, MARGIN + 4, y - 1);
+  doc.line(_mL, y - 1, _mL + 4, y - 1);
 
-  const lines = doc.splitTextToSize(title, CONTENT_W - 8);
+  const lines = doc.splitTextToSize(title, _cW - 8);
   for (const line of lines) {
-    if (y > CONTENT_BOTTOM) { doc.addPage(); y = CONTENT_TOP; }
-    doc.text(line, MARGIN + 8, y);
+    if (y > CONTENT_BOTTOM) { addPageWithBg(doc); y = CONTENT_TOP; }
+    doc.text(line, _mL + 8, y);
     y += LINE_H;
   }
 
@@ -384,7 +468,7 @@ function renderContent(doc: jsPDF, content: string, y: number): number {
 
     // ## TABLE OF CONTENTS — isolated on its own page
     if (/^## TABLE OF CONTENTS/i.test(trimmed)) {
-      doc.addPage();
+      addPageWithBg(doc);
       y = CONTENT_TOP;
       y = renderContentH2(doc, trimmed.slice(3).trim(), y);
       i++;
@@ -407,17 +491,17 @@ function renderContent(doc: jsPDF, content: string, y: number): number {
           continue;
         }
         const cleanToc = tocLine.replace(/\*\*/g, "").replace(/\*([^*]+)\*/g, "$1");
-        const wrapped = doc.splitTextToSize(cleanToc, CONTENT_W);
+        const wrapped = doc.splitTextToSize(cleanToc, _cW);
         for (const line of wrapped) {
-          if (y > CONTENT_BOTTOM) { doc.addPage(); y = CONTENT_TOP; }
-          doc.text(line, MARGIN, y);
+          if (y > CONTENT_BOTTOM) { addPageWithBg(doc); y = CONTENT_TOP; }
+          doc.text(line, _mL, y);
           y += LINE_H;
         }
         y += 1;
         i++;
       }
       // Force new page after TOC
-      doc.addPage();
+      addPageWithBg(doc);
       y = CONTENT_TOP;
       continue;
     }
@@ -453,19 +537,19 @@ function renderContent(doc: jsPDF, content: string, y: number): number {
 
     const isBullet = /^[-•*]\s/.test(trimmed);
     const indent = isBullet ? 7 : 0;
-    const width = CONTENT_W - indent;
+    const width = _cW - indent;
     const cleanText = trimmed.replace(/\*\*/g, "").replace(/\*([^*]+)\*/g, "$1");
     const wrappedLines = doc.splitTextToSize(cleanText, width);
 
     for (const line of wrappedLines) {
-      if (y > CONTENT_BOTTOM) { doc.addPage(); y = CONTENT_TOP; }
+      if (y > CONTENT_BOTTOM) { addPageWithBg(doc); y = CONTENT_TOP; }
       if (isBullet && line === wrappedLines[0]) {
         setColor(doc, C_GOLD, "text");
-        doc.text("•", MARGIN + 2, y);
+        doc.text("•", _mL + 2, y);
         setColor(doc, C_TEXT, "text");
-        doc.text(line.replace(/^[-•*]\s*/, ""), MARGIN + indent, y);
+        doc.text(line.replace(/^[-•*]\s*/, ""), _mL + indent, y);
       } else {
-        doc.text(line, MARGIN + indent, y);
+        doc.text(line, _mL + indent, y);
       }
       y += LINE_H;
     }
@@ -479,13 +563,13 @@ function renderContent(doc: jsPDF, content: string, y: number): number {
 
 // ─── Table renderer ───────────────────────────────────────────────────────────
 function renderTable(doc: jsPDF, headers: string[], rows: string[][], startY: number): number {
-  if (startY > CONTENT_BOTTOM - 20) { doc.addPage(); startY = CONTENT_TOP; }
+  if (startY > CONTENT_BOTTOM - 20) { addPageWithBg(doc); startY = CONTENT_TOP; }
 
   autoTable(doc, {
     startY,
     head: [headers],
     body: rows,
-    margin: { left: MARGIN, right: MARGIN },
+    margin: { left: _mL, right: PAGE_W - _mL - _cW },
     styles: {
       font: "NotoSansKR",
       fontStyle: "normal",
@@ -507,7 +591,7 @@ function renderTable(doc: jsPDF, headers: string[], rows: string[][], startY: nu
     alternateRowStyles: {
       fillColor: C_ALT_ROW,
     },
-    tableWidth: CONTENT_W,
+    tableWidth: _cW,
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -515,7 +599,16 @@ function renderTable(doc: jsPDF, headers: string[], rows: string[][], startY: nu
 }
 
 // ─── Main export ──────────────────────────────────────────────────────────────
-export function generatePDF(translation: TranslationResult): Buffer {
+export async function generatePDF(translation: TranslationResult): Promise<Buffer> {
+  // ── Load images (null if file not present — falls back to no image) ───────
+  // bgCover: full A4 background for cover page
+  // bgStrip1 / bgStrip2: cropped to strip dimensions, alternate left / right
+  const [bgCover, bgStrip1, bgStrip2] = await Promise.all([
+    loadAndCompressBgImage("bg-cover.jpg"),
+    loadAndCompressStripImage("bg-1.jpg"),
+    loadAndCompressStripImage("bg-2.jpg"),
+  ]);
+
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
 
   // Hint to PDF viewers to use continuous (single-column scroll) layout.
@@ -530,28 +623,59 @@ export function generatePDF(translation: TranslationResult): Buffer {
   });
 
   // ── Page 1: Cover ────────────────────────────────────────────────────────
-  renderCoverPage(doc, dateStr);
+  renderCoverPage(doc, dateStr, bgCover);
+
+  // ── Pages 2+: Introduction + Content ─────────────────────────────────────
+  // Pattern per non-cover page:
+  //   even nonCoverIdx (0, 2, 4…) → bg-1 strip on the LEFT
+  //   odd  nonCoverIdx (1, 3, 5…) → bg-2 strip on the RIGHT
+  let nonCoverIdx = 0;
+
+  const setupPage = () => {
+    const isEven = nonCoverIdx % 2 === 0;
+    const side   = isEven ? "left" : "right";
+    const bg     = isEven ? bgStrip1 : bgStrip2;
+    const alias  = isEven ? "bg-strip-1" : "bg-strip-2";
+
+    // Dynamic text margins: widen the margin on the strip side
+    _mL = isEven ? STRIP_W + STRIP_PAD : MARGIN;
+    _cW = PAGE_W - _mL - (isEven ? MARGIN : STRIP_W + STRIP_PAD);
+
+    if (bg) drawImageStrip(doc, bg, alias, side);
+    nonCoverIdx++;
+  };
+
+  // Wire up _pageBgPainter so overflow pages also get the correct strip.
+  _pageBgPainter = () => {
+    doc.setPage(doc.getNumberOfPages()); // ensure we're on the new page
+    setupPage();
+  };
 
   // ── Page 2: Introduction ─────────────────────────────────────────────────
   doc.addPage();
+  setupPage();
   renderIntroPage(doc);
 
-  // ── Pages 3+: Content (each ## section starts on its own page) ───────────
+  // ── Pages 3+: Content (each section starts on its own page) ──────────────
   for (let i = 0; i < translation.sections.length; i++) {
     const section = translation.sections[i];
 
-    // Every H2 section gets a fresh page
     doc.addPage();
+    setupPage();
     let y = CONTENT_TOP;
 
-    // Title: strip # markers (PART level)
     const cleanTitle = stripMarkdownHeadings(section.title);
     y = renderSectionTitle(doc, cleanTitle, y);
     y += 6;
 
-    // Content: keep ## and ### for in-content heading detection
+    // Overflow pages inside renderContent are handled via _pageBgPainter.
     y = renderContent(doc, section.content, y);
   }
+
+  _pageBgPainter = null;
+  // Reset to default margins so nothing leaks into subsequent calls
+  _mL = MARGIN;
+  _cW = CONTENT_W;
 
   // ── Page headers + footers (all non-cover pages) ──────────────────────────
   const totalPages = doc.getNumberOfPages();

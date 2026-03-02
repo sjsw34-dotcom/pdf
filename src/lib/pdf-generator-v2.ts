@@ -527,14 +527,14 @@ function renderContent(doc: jsPDF, content: string, y: number): number {
     if (!trimmed) { y += 4; i++; continue; }
 
     const isBullet = /^[-•*]\s/.test(trimmed);
-    const baseX = _mL + 8;
+    let baseX = _mL + 8;
     const bulletIndent = isBullet ? 5 : 0;
     const width = _cW - 8 - bulletIndent;
     const cleanText = trimmed.replace(/\*\*/g, "").replace(/\*([^*]+)\*/g, "$1");
     const wrappedLines = doc.splitTextToSize(cleanText, width);
 
     for (const line of wrappedLines) {
-      if (y > CONTENT_BOTTOM) { addPageWithBg(doc); y = CONTENT_TOP; }
+      if (y > CONTENT_BOTTOM) { addPageWithBg(doc); y = CONTENT_TOP; baseX = _mL + 8; }
       if (isBullet && line === wrappedLines[0]) {
         setColor(doc, C_GOLD, "text");
         doc.text("•", baseX, y);

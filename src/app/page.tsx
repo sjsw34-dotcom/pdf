@@ -9,7 +9,8 @@ import DownloadResult from "@/components/DownloadResult";
 
 type ReportType = "general" | "love";
 
-const CHUNK_SIZE = 3 * 1024 * 1024; // 3MB per chunk (under 4.5MB limit)
+const CHUNK_SIZE = 3 * 1024 * 1024; // 3MB per chunk
+const DIRECT_LIMIT = 4 * 1024 * 1024; // 4MB — below this, send directly
 
 export default function Home() {
   const [reportType, setReportType] = useState<ReportType | null>(null);
@@ -56,23 +57,45 @@ export default function Home() {
     setPdfBlob(null);
 
     try {
-      // Step 1: Upload file in chunks to Vercel Blob
-      const chunkUrls = await uploadChunks(file);
+      let response: Response;
 
-      setStatus("translating");
+      if (file.size <= DIRECT_LIMIT) {
+        // Small file: send directly via FormData (old reliable method)
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("type", reportType);
 
-      const timer = setTimeout(() => {
-        setStatus((prev) => (prev === "translating" ? "generating" : prev));
-      }, 8000);
+        const timer1 = setTimeout(() => {
+          setStatus((prev) => (prev === "extracting" ? "translating" : prev));
+        }, 2000);
+        const timer2 = setTimeout(() => {
+          setStatus((prev) => (prev === "translating" ? "generating" : prev));
+        }, 8000);
 
-      // Step 2: Send chunk URLs to translate API
-      const response = await fetch("/api/translate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chunkUrls, type: reportType }),
-      });
+        response = await fetch("/api/translate", {
+          method: "POST",
+          body: formData,
+        });
 
-      clearTimeout(timer);
+        clearTimeout(timer1);
+        clearTimeout(timer2);
+      } else {
+        // Large file: chunk upload via Vercel Blob
+        const chunkUrls = await uploadChunks(file);
+
+        setStatus("translating");
+        const timer = setTimeout(() => {
+          setStatus((prev) => (prev === "translating" ? "generating" : prev));
+        }, 8000);
+
+        response = await fetch("/api/translate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chunkUrls, type: reportType }),
+        });
+
+        clearTimeout(timer);
+      }
 
       if (!response.ok) {
         const data = await response.json();

@@ -10,27 +10,40 @@ export async function POST(request: NextRequest) {
   let chunkUrls: string[] = [];
 
   try {
-    const body = await request.json();
-    const { chunkUrls: urls, type: reportType = "general" } = body as {
-      chunkUrls: string[];
-      type?: string;
-    };
+    const contentType = request.headers.get("content-type") || "";
+    let buffer: Buffer;
+    let reportType = "general";
 
-    if (!urls || urls.length === 0) {
-      return NextResponse.json({ error: "No file provided" }, { status: 400 });
+    if (contentType.includes("multipart/form-data")) {
+      // ── Direct upload (small files < 4MB) ──────────────────────────
+      const formData = await request.formData();
+      const file = formData.get("file") as File | null;
+      reportType = (formData.get("type") as string) || "general";
+
+      if (!file) {
+        return NextResponse.json({ error: "No file provided" }, { status: 400 });
+      }
+
+      buffer = Buffer.from(await file.arrayBuffer());
+    } else {
+      // ── Chunked upload (large files via Vercel Blob) ───────────────
+      const body = await request.json();
+      chunkUrls = body.chunkUrls || [];
+      reportType = body.type || "general";
+
+      if (chunkUrls.length === 0) {
+        return NextResponse.json({ error: "No file provided" }, { status: 400 });
+      }
+
+      const chunks: Buffer[] = [];
+      for (const url of chunkUrls) {
+        const downloadUrl = await getDownloadUrl(url);
+        const res = await fetch(downloadUrl);
+        if (!res.ok) throw new Error("Failed to download chunk");
+        chunks.push(Buffer.from(await res.arrayBuffer()));
+      }
+      buffer = Buffer.concat(chunks);
     }
-
-    chunkUrls = urls;
-
-    // Download and reassemble chunks (private blob → signed download URL)
-    const chunks: Buffer[] = [];
-    for (const url of chunkUrls) {
-      const downloadUrl = await getDownloadUrl(url);
-      const res = await fetch(downloadUrl);
-      if (!res.ok) throw new Error("Failed to download chunk");
-      chunks.push(Buffer.from(await res.arrayBuffer()));
-    }
-    const buffer = Buffer.concat(chunks);
 
     // Translate
     const translation = await translateSajuPDF(buffer);
@@ -45,10 +58,10 @@ export async function POST(request: NextRequest) {
         ? "love-destiny-english.pdf"
         : "saju-analysis-english.pdf";
 
-    // Clean up blob chunks
-    try {
-      await Promise.all(chunkUrls.map((url) => del(url)));
-    } catch { /* best-effort cleanup */ }
+    // Clean up blob chunks if any
+    if (chunkUrls.length > 0) {
+      try { await Promise.all(chunkUrls.map((url) => del(url))); } catch { /* */ }
+    }
 
     return new NextResponse(new Uint8Array(pdfBuffer), {
       status: 200,
@@ -58,7 +71,6 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    // Clean up on error
     if (chunkUrls.length > 0) {
       try { await Promise.all(chunkUrls.map((url) => del(url))); } catch { /* */ }
     }

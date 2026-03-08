@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Split into 5-page chunks using pdf-lib
-    const pageChunks = await splitPDFIntoChunks(fullBuffer, 5);
+    const pageChunks = await splitPDFIntoChunks(fullBuffer, 15);
 
     // 3. Store each page chunk to blob
     const uploadId = crypto.randomUUID();

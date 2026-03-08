@@ -11,7 +11,7 @@ type ReportType = "general" | "love";
 
 const CHUNK_SIZE = 3 * 1024 * 1024; // 3MB per chunk
 const DIRECT_LIMIT = 4 * 1024 * 1024; // 4MB — below this, send directly
-const INTER_CHUNK_DELAY_MS = 3000; // 3s between translate-chunk calls
+const INTER_CHUNK_DELAY_MS = 1000; // 1s between translate-chunk calls
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

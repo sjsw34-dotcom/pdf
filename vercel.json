@@ -1,0 +1,14 @@
+{
+  "functions": {
+    "src/app/api/translate/route.ts": {
+      "maxDuration": 300
+    }
+  },
+  "routes": [
+    {
+      "src": "/api/translate",
+      "methods": ["POST"],
+      "maxBodyLength": 10485760
+    }
+  ]
+}

@@ -3,6 +3,15 @@ import { translateSajuPDF } from "@/lib/translator";
 import { generatePDF } from "@/lib/pdf-generator-v2";
 import { generateLovePDF } from "@/lib/pdf-generator-love";
 
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
+// Next.js App Router: increase body size limit to 10MB
+export const maxDuration = 300;
+
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 export async function POST(request: NextRequest) {

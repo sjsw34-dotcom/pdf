@@ -39,6 +39,7 @@ const CONSULTANT = "Ksaju Kim";
 const C_ROSE: [number, number, number] = [168, 50, 80];       // deep rose
 const C_ROSE_LIGHT: [number, number, number] = [220, 130, 150]; // soft rose
 const C_PURPLE: [number, number, number] = [88, 56, 128];     // deep purple
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const C_PURPLE_LIGHT: [number, number, number] = [180, 160, 210]; // lavender
 const C_GOLD: [number, number, number] = [182, 148, 78];
 const C_CREAM: [number, number, number] = [255, 248, 250];    // warm pink cream

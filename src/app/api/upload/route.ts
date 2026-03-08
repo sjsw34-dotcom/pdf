@@ -1,22 +1,27 @@
-import { put } from "@vercel/blob";
-import { NextRequest, NextResponse } from "next/server";
+import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
+import { NextResponse } from "next/server";
 
-export const runtime = "edge";
+export async function POST(request: Request) {
+  const body = (await request.json()) as HandleUploadBody;
 
-export async function PUT(request: NextRequest) {
-  const filename = request.nextUrl.searchParams.get("filename");
+  try {
+    const jsonResponse = await handleUpload({
+      body,
+      request,
+      token: process.env.BLOB_READ_WRITE_TOKEN,
+      onBeforeGenerateToken: async () => ({
+        allowedContentTypes: ["application/pdf"],
+        maximumSizeInBytes: 10 * 1024 * 1024,
+      }),
+      onUploadCompleted: async () => {},
+    });
 
-  if (!filename) {
-    return NextResponse.json({ error: "Missing filename" }, { status: 400 });
+    return NextResponse.json(jsonResponse);
+  } catch (error) {
+    console.error("Upload error:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Upload failed" },
+      { status: 400 }
+    );
   }
-
-  if (!request.body) {
-    return NextResponse.json({ error: "Missing body" }, { status: 400 });
-  }
-
-  const blob = await put(filename, request.body, {
-    access: "public",
-  });
-
-  return NextResponse.json(blob);
 }

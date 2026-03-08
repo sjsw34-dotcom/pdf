@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { upload } from "@vercel/blob/client";
 import FileUpload from "@/components/FileUpload";
 import TranslationProgress, {
   TranslationStatus,
@@ -22,18 +23,12 @@ export default function Home() {
     setPdfBlob(null);
 
     try {
-      // Step 1: Upload to Vercel Blob via Edge PUT
-      const uploadRes = await fetch(
-        `/api/upload?filename=${encodeURIComponent(file.name)}`,
-        { method: "PUT", body: file }
-      );
+      // Step 1: Upload directly to Vercel Blob (bypasses 4.5MB serverless limit)
+      const blob = await upload(file.name, file, {
+        access: "public",
+        handleUploadUrl: "/api/upload",
+      });
 
-      if (!uploadRes.ok) {
-        const data = await uploadRes.json();
-        throw new Error(data.error || "Upload failed");
-      }
-
-      const blob = await uploadRes.json();
       setStatus("translating");
 
       const timer = setTimeout(() => {

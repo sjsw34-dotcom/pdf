@@ -44,7 +44,7 @@ export default function Home() {
       }
 
       const data = await res.json();
-      chunkUrls.push(data.url);
+      chunkUrls.push(data.downloadUrl);
     }
 
     return chunkUrls;

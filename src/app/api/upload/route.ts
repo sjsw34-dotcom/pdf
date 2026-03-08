@@ -1,27 +1,30 @@
-import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
-import { NextResponse } from "next/server";
+import { put } from "@vercel/blob";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function POST(request: Request) {
-  const body = (await request.json()) as HandleUploadBody;
-
+export async function POST(request: NextRequest) {
   try {
-    const jsonResponse = await handleUpload({
-      body,
-      request,
-      token: process.env.BLOB_READ_WRITE_TOKEN,
-      onBeforeGenerateToken: async () => ({
-        allowedContentTypes: ["application/pdf"],
-        maximumSizeInBytes: 10 * 1024 * 1024,
-      }),
-      onUploadCompleted: async () => {},
-    });
+    const formData = await request.formData();
+    const chunk = formData.get("chunk") as File | null;
+    const uploadId = formData.get("uploadId") as string;
+    const chunkIndex = formData.get("chunkIndex") as string;
 
-    return NextResponse.json(jsonResponse);
+    if (!chunk || !uploadId || chunkIndex === null) {
+      return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+    }
+
+    const arrayBuffer = await chunk.arrayBuffer();
+    const blob = await put(
+      `uploads/${uploadId}/chunk-${chunkIndex.padStart(3, "0")}`,
+      Buffer.from(arrayBuffer),
+      { access: "public" }
+    );
+
+    return NextResponse.json({ url: blob.url });
   } catch (error) {
     console.error("Upload error:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Upload failed" },
-      { status: 400 }
+      { status: 500 }
     );
   }
 }

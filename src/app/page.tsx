@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { upload } from "@vercel/blob/client";
 import FileUpload from "@/components/FileUpload";
 import TranslationProgress, {
   TranslationStatus,
@@ -10,11 +9,45 @@ import DownloadResult from "@/components/DownloadResult";
 
 type ReportType = "general" | "love";
 
+const CHUNK_SIZE = 3 * 1024 * 1024; // 3MB per chunk (under 4.5MB limit)
+
 export default function Home() {
   const [reportType, setReportType] = useState<ReportType | null>(null);
   const [status, setStatus] = useState<TranslationStatus>("idle");
   const [error, setError] = useState<string>("");
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
+
+  const uploadChunks = async (file: File): Promise<string[]> => {
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    const uploadId = crypto.randomUUID();
+    const chunkUrls: string[] = [];
+
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, file.size);
+      const chunk = file.slice(start, end);
+
+      const formData = new FormData();
+      formData.append("chunk", chunk, `chunk-${i}`);
+      formData.append("uploadId", uploadId);
+      formData.append("chunkIndex", i.toString());
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Chunk upload failed");
+      }
+
+      const data = await res.json();
+      chunkUrls.push(data.url);
+    }
+
+    return chunkUrls;
+  };
 
   const handleFileSelect = async (file: File) => {
     if (!reportType) return;
@@ -23,11 +56,8 @@ export default function Home() {
     setPdfBlob(null);
 
     try {
-      // Step 1: Upload directly to Vercel Blob (bypasses 4.5MB serverless limit)
-      const blob = await upload(file.name, file, {
-        access: "public",
-        handleUploadUrl: "/api/upload",
-      });
+      // Step 1: Upload file in chunks to Vercel Blob
+      const chunkUrls = await uploadChunks(file);
 
       setStatus("translating");
 
@@ -35,11 +65,11 @@ export default function Home() {
         setStatus((prev) => (prev === "translating" ? "generating" : prev));
       }, 8000);
 
-      // Step 2: Send blob URL to translate API
+      // Step 2: Send chunk URLs to translate API
       const response = await fetch("/api/translate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: blob.url, type: reportType }),
+        body: JSON.stringify({ chunkUrls, type: reportType }),
       });
 
       clearTimeout(timer);

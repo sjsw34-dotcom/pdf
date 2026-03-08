@@ -3,16 +3,22 @@
 interface DownloadResultProps {
   pdfBlob: Blob | null;
   onReset: () => void;
+  reportType: "general" | "love";
 }
 
-export default function DownloadResult({ pdfBlob, onReset }: DownloadResultProps) {
+export default function DownloadResult({ pdfBlob, onReset, reportType }: DownloadResultProps) {
   if (!pdfBlob) return null;
+
+  const filename =
+    reportType === "love"
+      ? "love-destiny-english.pdf"
+      : "saju-analysis-english.pdf";
 
   const handleDownload = () => {
     const url = URL.createObjectURL(pdfBlob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "saju-analysis-english.pdf";
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -39,7 +45,9 @@ export default function DownloadResult({ pdfBlob, onReset }: DownloadResultProps
           Translation Complete!
         </h3>
         <p className="text-green-600 mb-6">
-          Your Saju analysis has been translated to English.
+          {reportType === "love"
+            ? "Your Love Destiny report has been translated to English."
+            : "Your Saju analysis has been translated to English."}
         </p>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <button

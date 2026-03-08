@@ -11,10 +11,16 @@ type ReportType = "general" | "love";
 
 const CHUNK_SIZE = 3 * 1024 * 1024; // 3MB per chunk
 const DIRECT_LIMIT = 4 * 1024 * 1024; // 4MB — below this, send directly
+const INTER_CHUNK_DELAY_MS = 3000; // 3s between translate-chunk calls
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export default function Home() {
   const [reportType, setReportType] = useState<ReportType | null>(null);
   const [status, setStatus] = useState<TranslationStatus>("idle");
+  const [statusDetail, setStatusDetail] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
 
@@ -51,17 +57,95 @@ export default function Home() {
     return chunkUrls;
   };
 
+  const handleLargeFile = async (file: File) => {
+    if (!reportType) return;
+
+    // Step 1: Upload file chunks to blob
+    setStatus("extracting");
+    setStatusDetail("Uploading file...");
+    const chunkUrls = await uploadChunks(file);
+    console.log("Chunk URLs:", JSON.stringify(chunkUrls));
+
+    // Step 2: Call /api/split-pdf to split into page chunks
+    setStatusDetail("Splitting PDF into pages...");
+    const splitRes = await fetch("/api/split-pdf", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chunkUrls }),
+    });
+
+    if (!splitRes.ok) {
+      const data = await splitRes.json();
+      throw new Error(data.error || "PDF split failed");
+    }
+
+    const { pageChunkUrls, totalChunks } = await splitRes.json();
+    console.log(`Split into ${totalChunks} page chunks`);
+
+    // Step 3: Translate each chunk sequentially
+    setStatus("translating");
+    const translatedTexts: string[] = [];
+
+    for (let i = 0; i < totalChunks; i++) {
+      setStatusDetail(`Translating section ${i + 1} of ${totalChunks}...`);
+
+      if (i > 0) {
+        await sleep(INTER_CHUNK_DELAY_MS);
+      }
+
+      const translateRes = await fetch("/api/translate-chunk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: pageChunkUrls[i],
+          chunkNum: i + 1,
+          totalChunks,
+        }),
+      });
+
+      if (!translateRes.ok) {
+        const data = await translateRes.json();
+        throw new Error(data.error || `Translation of chunk ${i + 1} failed`);
+      }
+
+      const { text } = await translateRes.json();
+      translatedTexts.push(text);
+    }
+
+    // Step 4: Generate final PDF
+    setStatus("generating");
+    setStatusDetail("Generating English PDF...");
+
+    const generateRes = await fetch("/api/generate-pdf", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        texts: translatedTexts,
+        type: reportType,
+        pageChunkUrls,
+      }),
+    });
+
+    if (!generateRes.ok) {
+      const data = await generateRes.json();
+      throw new Error(data.error || "PDF generation failed");
+    }
+
+    return await generateRes.blob();
+  };
+
   const handleFileSelect = async (file: File) => {
     if (!reportType) return;
     setStatus("extracting");
+    setStatusDetail("");
     setError("");
     setPdfBlob(null);
 
     try {
-      let response: Response;
+      let resultBlob: Blob;
 
       if (file.size <= DIRECT_LIMIT) {
-        // Small file: send directly via FormData (old reliable method)
+        // Small file: send directly via FormData (single-call flow)
         const formData = new FormData();
         formData.append("file", file);
         formData.append("type", reportType);
@@ -73,50 +157,41 @@ export default function Home() {
           setStatus((prev) => (prev === "translating" ? "generating" : prev));
         }, 8000);
 
-        response = await fetch("/api/translate", {
+        const response = await fetch("/api/translate", {
           method: "POST",
           body: formData,
         });
 
         clearTimeout(timer1);
         clearTimeout(timer2);
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error || "Translation failed");
+        }
+
+        resultBlob = await response.blob();
       } else {
-        // Large file: chunk upload via Vercel Blob
-        const chunkUrls = await uploadChunks(file);
-        console.log("Chunk URLs:", JSON.stringify(chunkUrls));
-        console.log("Original file size:", file.size);
-
-        setStatus("translating");
-        const timer = setTimeout(() => {
-          setStatus((prev) => (prev === "translating" ? "generating" : prev));
-        }, 8000);
-
-        response = await fetch("/api/translate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chunkUrls, type: reportType }),
-        });
-
-        clearTimeout(timer);
+        // Large file: chunked split → translate → generate flow
+        const blob = await handleLargeFile(file);
+        if (!blob) throw new Error("No result returned");
+        resultBlob = blob;
       }
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Translation failed");
-      }
-
-      const resultBlob = await response.blob();
       setPdfBlob(resultBlob);
       setStatus("done");
+      setStatusDetail("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
       setStatus("error");
+      setStatusDetail("");
     }
   };
 
   const handleReset = () => {
     setReportType(null);
     setStatus("idle");
+    setStatusDetail("");
     setError("");
     setPdfBlob(null);
   };
@@ -197,7 +272,9 @@ export default function Home() {
         )}
 
         {/* Progress */}
-        {isProcessing && <TranslationProgress status={status} />}
+        {isProcessing && (
+          <TranslationProgress status={status} detail={statusDetail} />
+        )}
 
         {/* Error */}
         {status === "error" && (

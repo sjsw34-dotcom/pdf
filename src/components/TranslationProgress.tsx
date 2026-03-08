@@ -11,6 +11,7 @@ export type TranslationStatus =
 interface TranslationProgressProps {
   status: TranslationStatus;
   error?: string;
+  detail?: string;
 }
 
 const steps = [
@@ -30,6 +31,7 @@ const statusOrder: TranslationStatus[] = [
 export default function TranslationProgress({
   status,
   error,
+  detail,
 }: TranslationProgressProps) {
   if (status === "idle") return null;
 
@@ -103,6 +105,11 @@ export default function TranslationProgress({
                   {step.label}
                   {isActive && "..."}
                 </span>
+                {isActive && detail && (
+                  <span className="text-xs text-gray-500 ml-11 block mt-0.5">
+                    {detail}
+                  </span>
+                )}
               </div>
             );
           })}

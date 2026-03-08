@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { PDFDocument } from "pdf-lib";
 import { getGlossaryForPrompt } from "./saju-glossary";
 
-const CHUNK_SIZE = 10;
+const CHUNK_SIZE = 5;
 const INTER_CHUNK_DELAY_MS = 3000; // 3s between chunks
 const RATE_LIMIT_WAIT_MS = 95000;   // fallback wait (95s > server's 90s retry-after)
 const MAX_RETRIES = 4;
@@ -159,7 +159,7 @@ export interface TranslationResult {
   clientName: string; // extracted from "Dear [Name]," greeting
 }
 
-function extractClientName(text: string): string {
+export function extractClientName(text: string): string {
   // Matches "Dear 전찬미," or "Dear Jeon Chan-mi," (up to 50 chars before the comma)
   const match = text.match(/\bDear\s+([^,\n]{1,50}),/);
   return match ? match[1].trim() : "";
@@ -190,7 +190,7 @@ export async function translateSajuPDF(
   return { translatedText: cleaned, sections, clientName: extractClientName(cleaned) };
 }
 
-async function translateChunkWithRetry(
+export async function translateChunkWithRetry(
   client: Anthropic,
   base64PDF: string,
   chunkNum: number,
@@ -291,7 +291,7 @@ async function translateChunk(
  *          CJK Unified Ideographs (木火土金水 etc.), Korean syllables (가-힣).
  * This removes ALL encoding artifacts regardless of their Unicode range.
  */
-function cleanTranslation(text: string): string {
+export function cleanTranslation(text: string): string {
   return (
     text
       // Whitelist: keep printable ASCII, newlines, CJK, Korean only
@@ -310,7 +310,7 @@ function cleanTranslation(text: string): string {
   );
 }
 
-async function splitPDFIntoChunks(
+export async function splitPDFIntoChunks(
   buffer: Buffer,
   chunkSize: number
 ): Promise<Buffer[]> {
@@ -331,7 +331,7 @@ async function splitPDFIntoChunks(
   return chunks;
 }
 
-function parseIntoSections(
+export function parseIntoSections(
   text: string
 ): { title: string; content: string }[] {
   // Demote non-PART single-# headings (CHAPTER, monthly/annual fortune, etc.)

@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     const blob = await put(
       `uploads/${uploadId}/chunk-${chunkIndex.padStart(3, "0")}`,
       Buffer.from(arrayBuffer),
-      { access: "public" }
+      { access: "private" }
     );
 
     return NextResponse.json({ url: blob.url });

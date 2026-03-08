@@ -15,7 +15,7 @@ export async function GET() {
 
     // Test actual blob write
     const blob = await put("test/hello.txt", "blob works!", {
-      access: "public",
+      access: "private",
     });
 
     // Clean up

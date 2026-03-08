@@ -22,10 +22,13 @@ export async function POST(request: NextRequest) {
 
     chunkUrls = urls;
 
-    // Download and reassemble chunks
+    // Download and reassemble chunks (private blob requires token)
+    const blobToken = process.env.BLOB_READ_WRITE_TOKEN || "";
     const chunks: Buffer[] = [];
     for (const url of chunkUrls) {
-      const res = await fetch(url);
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${blobToken}` },
+      });
       if (!res.ok) throw new Error("Failed to download chunk");
       chunks.push(Buffer.from(await res.arrayBuffer()));
     }

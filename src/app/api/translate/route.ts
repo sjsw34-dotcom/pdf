@@ -71,9 +71,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    if (chunkUrls.length > 0) {
-      try { await Promise.all(chunkUrls.map((url) => del(url))); } catch { /* */ }
-    }
+    // Don't delete chunks on error — allows debugging reassembly
     console.error("Translation error:", error);
     const message =
       error instanceof Error ? error.message : "An unexpected error occurred";

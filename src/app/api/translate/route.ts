@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { del, getDownloadUrl } from "@vercel/blob";
+import { del } from "@vercel/blob";
 import { translateSajuPDF } from "@/lib/translator";
 import { generatePDF } from "@/lib/pdf-generator-v2";
 import { generateLovePDF } from "@/lib/pdf-generator-love";
@@ -35,11 +35,14 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "No file provided" }, { status: 400 });
       }
 
+      const token = process.env.BLOB_READ_WRITE_TOKEN || "";
       const chunks: Buffer[] = [];
       for (const url of chunkUrls) {
-        const downloadUrl = await getDownloadUrl(url);
+        // Private blob: use token query param for download
+        const separator = url.includes("?") ? "&" : "?";
+        const downloadUrl = `${url}${separator}token=${token}`;
         const res = await fetch(downloadUrl);
-        if (!res.ok) throw new Error("Failed to download chunk");
+        if (!res.ok) throw new Error(`Failed to download chunk: ${res.status}`);
         chunks.push(Buffer.from(await res.arrayBuffer()));
       }
       buffer = Buffer.concat(chunks);

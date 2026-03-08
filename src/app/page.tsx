@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { upload } from "@vercel/blob/client";
 import FileUpload from "@/components/FileUpload";
 import TranslationProgress, {
   TranslationStatus,
@@ -22,33 +23,34 @@ export default function Home() {
     setPdfBlob(null);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("type", reportType);
+      // Step 1: Upload to Vercel Blob
+      const blob = await upload(file.name, file, {
+        access: "public",
+        handleUploadUrl: "/api/upload",
+      });
 
-      const timer1 = setTimeout(() => {
-        setStatus((prev) => (prev === "extracting" ? "translating" : prev));
-      }, 2000);
+      setStatus("translating");
 
-      const timer2 = setTimeout(() => {
+      const timer = setTimeout(() => {
         setStatus((prev) => (prev === "translating" ? "generating" : prev));
       }, 8000);
 
+      // Step 2: Send blob URL to translate API
       const response = await fetch("/api/translate", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: blob.url, type: reportType }),
       });
 
-      clearTimeout(timer1);
-      clearTimeout(timer2);
+      clearTimeout(timer);
 
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || "Translation failed");
       }
 
-      const blob = await response.blob();
-      setPdfBlob(blob);
+      const resultBlob = await response.blob();
+      setPdfBlob(resultBlob);
       setStatus("done");
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");

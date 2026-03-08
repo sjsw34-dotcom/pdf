@@ -1,47 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
+import { del } from "@vercel/blob";
 import { translateSajuPDF } from "@/lib/translator";
 import { generatePDF } from "@/lib/pdf-generator-v2";
 import { generateLovePDF } from "@/lib/pdf-generator-love";
 
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
-
-// Next.js App Router: increase body size limit to 10MB
 export const maxDuration = 300;
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-
 export async function POST(request: NextRequest) {
+  let blobUrl: string | null = null;
+
   try {
-    const formData = await request.formData();
-    const file = formData.get("file") as File | null;
-    const reportType = (formData.get("type") as string) || "general";
+    const body = await request.json();
+    const { url, type: reportType = "general" } = body as {
+      url: string;
+      type?: string;
+    };
 
-    if (!file) {
-      return NextResponse.json({ error: "No file provided" }, { status: 400 });
+    if (!url) {
+      return NextResponse.json({ error: "No file URL provided" }, { status: 400 });
     }
 
-    if (!file.name.toLowerCase().endsWith(".pdf")) {
-      return NextResponse.json(
-        { error: "Only PDF files are accepted" },
-        { status: 400 }
-      );
+    blobUrl = url;
+
+    // Download PDF from Vercel Blob
+    const response = await fetch(url);
+    if (!response.ok) {
+      return NextResponse.json({ error: "Failed to download file" }, { status: 400 });
     }
 
-    if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json(
-        { error: "File size exceeds 10MB limit" },
-        { status: 400 }
-      );
-    }
-
-    const arrayBuffer = await file.arrayBuffer();
+    const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Claude reads the PDF directly — handles text, images, and custom fonts
+    // Claude reads the PDF directly
     const translation = await translateSajuPDF(buffer);
 
     const pdfBuffer =
@@ -54,6 +44,13 @@ export async function POST(request: NextRequest) {
         ? "love-destiny-english.pdf"
         : "saju-analysis-english.pdf";
 
+    // Clean up blob after processing
+    try {
+      await del(url);
+    } catch {
+      // Blob cleanup is best-effort
+    }
+
     return new NextResponse(new Uint8Array(pdfBuffer), {
       status: 200,
       headers: {
@@ -62,6 +59,10 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    // Clean up blob on error too
+    if (blobUrl) {
+      try { await del(blobUrl); } catch { /* best-effort */ }
+    }
     console.error("Translation error:", error);
     const message =
       error instanceof Error ? error.message : "An unexpected error occurred";

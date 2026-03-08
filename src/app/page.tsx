@@ -44,6 +44,7 @@ export default function Home() {
       }
 
       const data = await res.json();
+      console.log(`Chunk ${i}: uploaded ${data.size} bytes, url: ${data.url}`);
       chunkUrls.push(data.url);
     }
 

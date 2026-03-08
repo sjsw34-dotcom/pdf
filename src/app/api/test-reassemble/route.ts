@@ -10,13 +10,24 @@ export async function POST(request: NextRequest) {
     }
 
     const chunks: Buffer[] = [];
+    const chunkSizes: number[] = [];
     for (const url of chunkUrls) {
       const res = await fetch(url);
-      if (!res.ok) return NextResponse.json({ error: `Fetch failed: ${res.status}` }, { status: 500 });
-      chunks.push(Buffer.from(await res.arrayBuffer()));
+      if (!res.ok) {
+        return NextResponse.json({
+          error: `Fetch failed: ${res.status} ${res.statusText}`,
+          url,
+        }, { status: 500 });
+      }
+      const buf = Buffer.from(await res.arrayBuffer());
+      chunkSizes.push(buf.length);
+      chunks.push(buf);
     }
 
     const buffer = Buffer.concat(chunks);
+
+    // Check if it starts with PDF magic bytes
+    const isPDF = buffer.length > 4 && buffer.slice(0, 5).toString() === "%PDF-";
 
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,
@@ -24,7 +35,8 @@ export async function POST(request: NextRequest) {
         "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="reassembled.pdf"`,
         "X-Total-Size": buffer.length.toString(),
-        "X-Chunk-Count": chunkUrls.length.toString(),
+        "X-Chunk-Sizes": chunkSizes.join(","),
+        "X-Is-PDF": isPDF.toString(),
       },
     });
   } catch (error) {

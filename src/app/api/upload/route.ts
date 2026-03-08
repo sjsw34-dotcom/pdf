@@ -13,13 +13,14 @@ export async function POST(request: NextRequest) {
     }
 
     const arrayBuffer = await chunk.arrayBuffer();
+    const buf = Buffer.from(arrayBuffer);
     const blob = await put(
       `uploads/${uploadId}/chunk-${chunkIndex.padStart(3, "0")}`,
-      Buffer.from(arrayBuffer),
-      { access: "public" }
+      buf,
+      { access: "public", contentType: "application/octet-stream", addRandomSuffix: false }
     );
 
-    return NextResponse.json({ url: blob.url });
+    return NextResponse.json({ url: blob.url, size: buf.length });
   } catch (error) {
     console.error("Upload error:", error);
     return NextResponse.json(

@@ -8,24 +8,37 @@ export async function POST(request: NextRequest) {
   let chunkUrls: string[] = [];
 
   try {
-    const body = await request.json();
-    chunkUrls = body.chunkUrls || [];
+    const contentType = request.headers.get("content-type") || "";
+    let fullBuffer: Buffer;
 
-    if (chunkUrls.length === 0) {
-      return NextResponse.json(
-        { error: "No chunk URLs provided" },
-        { status: 400 }
-      );
-    }
+    if (contentType.includes("multipart/form-data")) {
+      // Direct file upload (small files)
+      const formData = await request.formData();
+      const file = formData.get("file") as File | null;
+      if (!file) {
+        return NextResponse.json({ error: "No file provided" }, { status: 400 });
+      }
+      fullBuffer = Buffer.from(await file.arrayBuffer());
+    } else {
+      // Chunked upload via blob URLs (large files)
+      const body = await request.json();
+      chunkUrls = body.chunkUrls || [];
 
-    // 1. Download and reassemble into full PDF buffer
-    const chunks: Buffer[] = [];
-    for (const url of chunkUrls) {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`Failed to download chunk: ${res.status}`);
-      chunks.push(Buffer.from(await res.arrayBuffer()));
+      if (chunkUrls.length === 0) {
+        return NextResponse.json(
+          { error: "No chunk URLs provided" },
+          { status: 400 }
+        );
+      }
+
+      const chunks: Buffer[] = [];
+      for (const url of chunkUrls) {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Failed to download chunk: ${res.status}`);
+        chunks.push(Buffer.from(await res.arrayBuffer()));
+      }
+      fullBuffer = Buffer.concat(chunks);
     }
-    const fullBuffer = Buffer.concat(chunks);
 
     // 2. Split into 5-page chunks using pdf-lib
     const pageChunks = await splitPDFIntoChunks(fullBuffer, 5);

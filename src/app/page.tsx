@@ -57,21 +57,36 @@ export default function Home() {
     return chunkUrls;
   };
 
-  const handleLargeFile = async (file: File) => {
+  const handleChunkedTranslation = async (file: File) => {
     if (!reportType) return;
 
-    // Step 1: Upload file chunks to blob
-    setStatus("extracting");
-    setStatusDetail("Uploading file...");
-    const chunkUrls = await uploadChunks(file);
-    console.log("Chunk URLs:", JSON.stringify(chunkUrls));
+    const isLarge = file.size > DIRECT_LIMIT;
 
-    // Step 2: Call /api/split-pdf to split into page chunks
-    setStatusDetail("Splitting PDF into pages...");
+    // Step 1: Split PDF into page chunks
+    setStatus("extracting");
+    let splitBody: BodyInit;
+    let splitHeaders: HeadersInit | undefined;
+
+    if (isLarge) {
+      // Large file: upload chunks to blob first
+      setStatusDetail("Uploading file...");
+      const chunkUrls = await uploadChunks(file);
+      console.log("Chunk URLs:", JSON.stringify(chunkUrls));
+      setStatusDetail("Splitting PDF into pages...");
+      splitBody = JSON.stringify({ chunkUrls });
+      splitHeaders = { "Content-Type": "application/json" };
+    } else {
+      // Small file: send directly
+      setStatusDetail("Splitting PDF into pages...");
+      const formData = new FormData();
+      formData.append("file", file);
+      splitBody = formData;
+    }
+
     const splitRes = await fetch("/api/split-pdf", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chunkUrls }),
+      headers: splitHeaders,
+      body: splitBody,
     });
 
     if (!splitRes.ok) {
@@ -142,41 +157,11 @@ export default function Home() {
     setPdfBlob(null);
 
     try {
-      let resultBlob: Blob;
-
-      if (file.size <= DIRECT_LIMIT) {
-        // Small file: send directly via FormData (single-call flow)
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("type", reportType);
-
-        const timer1 = setTimeout(() => {
-          setStatus((prev) => (prev === "extracting" ? "translating" : prev));
-        }, 2000);
-        const timer2 = setTimeout(() => {
-          setStatus((prev) => (prev === "translating" ? "generating" : prev));
-        }, 8000);
-
-        const response = await fetch("/api/translate", {
-          method: "POST",
-          body: formData,
-        });
-
-        clearTimeout(timer1);
-        clearTimeout(timer2);
-
-        if (!response.ok) {
-          const data = await response.json();
-          throw new Error(data.error || "Translation failed");
-        }
-
-        resultBlob = await response.blob();
-      } else {
-        // Large file: chunked split → translate → generate flow
-        const blob = await handleLargeFile(file);
-        if (!blob) throw new Error("No result returned");
-        resultBlob = blob;
-      }
+      // All files go through the per-chunk flow:
+      // split-pdf → translate-chunk (loop) → generate-pdf
+      const blob = await handleChunkedTranslation(file);
+      if (!blob) throw new Error("No result returned");
+      const resultBlob = blob;
 
       setPdfBlob(resultBlob);
       setStatus("done");

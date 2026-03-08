@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { PDFDocument } from "pdf-lib";
 import { getGlossaryForPrompt } from "./saju-glossary";
 
-const CHUNK_SIZE = 10;
+const CHUNK_SIZE = 5;
 const INTER_CHUNK_DELAY_MS = 10000; // 10s between chunks
 const RATE_LIMIT_WAIT_MS = 95000;   // fallback wait (95s > server's 90s retry-after)
 const MAX_RETRIES = 4;
@@ -316,7 +316,8 @@ async function splitPDFIntoChunks(
 ): Promise<Buffer[]> {
   const pdfDoc = await PDFDocument.load(buffer);
   const totalPages = pdfDoc.getPageCount();
-  if (totalPages <= chunkSize) return [buffer];
+  // Always split — large PDFs sent whole may exceed Claude's processing limit
+  if (totalPages <= 1) return [buffer];
 
   const chunks: Buffer[] = [];
   for (let start = 0; start < totalPages; start += chunkSize) {

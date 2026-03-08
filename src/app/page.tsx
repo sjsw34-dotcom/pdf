@@ -82,6 +82,8 @@ export default function Home() {
       } else {
         // Large file: chunk upload via Vercel Blob
         const chunkUrls = await uploadChunks(file);
+        console.log("Chunk URLs:", JSON.stringify(chunkUrls));
+        console.log("Original file size:", file.size);
 
         setStatus("translating");
         const timer = setTimeout(() => {

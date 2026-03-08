@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { del } from "@vercel/blob";
+import { del, getDownloadUrl } from "@vercel/blob";
 import { translateSajuPDF } from "@/lib/translator";
 import { generatePDF } from "@/lib/pdf-generator-v2";
 import { generateLovePDF } from "@/lib/pdf-generator-love";
@@ -22,13 +22,11 @@ export async function POST(request: NextRequest) {
 
     chunkUrls = urls;
 
-    // Download and reassemble chunks (private blob requires token)
-    const blobToken = process.env.BLOB_READ_WRITE_TOKEN || "";
+    // Download and reassemble chunks (private blob → signed download URL)
     const chunks: Buffer[] = [];
     for (const url of chunkUrls) {
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${blobToken}` },
-      });
+      const downloadUrl = await getDownloadUrl(url);
+      const res = await fetch(downloadUrl);
       if (!res.ok) throw new Error("Failed to download chunk");
       chunks.push(Buffer.from(await res.arrayBuffer()));
     }

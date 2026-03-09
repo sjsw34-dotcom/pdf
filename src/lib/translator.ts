@@ -5,7 +5,8 @@ import { getGlossaryForPrompt } from "./saju-glossary";
 const CHUNK_SIZE = 5;
 const INTER_CHUNK_DELAY_MS = 3000; // 3s between chunks
 const RATE_LIMIT_WAIT_MS = 95000;   // fallback wait (95s > server's 90s retry-after)
-const MAX_RETRIES = 4;
+const MAX_RETRIES = 5;
+const MAX_CONTINUATIONS = 2; // max continuation loops per chunk (was 4)
 
 const SYSTEM_PROMPT = `You are an expert translator specializing in Korean Saju (四柱, Four Pillars of Destiny) analysis documents. Translate the provided Korean saju PDF into clear, natural English.
 
@@ -204,22 +205,30 @@ export async function translateChunkWithRetry(
         typeof err === "object" && err !== null && "status" in err
           ? (err as { status: number }).status
           : 0;
+
       if (status === 429 && attempt < MAX_RETRIES - 1) {
-        // Use retry-after header from server if available, otherwise fall back
         const retryAfterHeader =
           typeof err === "object" && err !== null && "headers" in err
             ? (err as { headers?: { get?: (k: string) => string | null } })
                 .headers?.get?.("retry-after")
             : null;
         const waitMs = retryAfterHeader
-          ? (parseInt(retryAfterHeader) + 10) * 1000
+          ? (parseInt(retryAfterHeader) + 5) * 1000
           : RATE_LIMIT_WAIT_MS;
         console.log(
-          `Rate limited on chunk ${chunkNum}. Waiting ${waitMs / 1000}s (retry-after: ${retryAfterHeader ?? "n/a"})...`
+          `Rate limited on chunk ${chunkNum}. Waiting ${waitMs / 1000}s (attempt ${attempt + 1})...`
         );
         await sleep(waitMs);
         continue;
       }
+
+      // Transient 5xx — retry after short wait
+      if (status >= 500 && attempt < MAX_RETRIES - 1) {
+        console.log(`Server error (${status}) on chunk ${chunkNum}, retrying in 5s...`);
+        await sleep(5000);
+        continue;
+      }
+
       throw err;
     }
   }
@@ -240,14 +249,14 @@ async function translateChunk(
   let fullText = "";
   let continueFrom: string | null = null;
 
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < MAX_CONTINUATIONS; i++) {
     const userPrompt = continueFrom
       ? `Continue from after the section "${continueFrom}". Output ONLY remaining sections — do not repeat any content.`
       : basePrompt;
 
     const response = await client.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 8192,
+      max_tokens: 16384,
       system: SYSTEM_PROMPT,
       messages: [
         {
@@ -294,6 +303,10 @@ async function translateChunk(
 export function cleanTranslation(text: string): string {
   return (
     text
+      // Rebrand: replace old brand names with SajuMuse
+      .replace(/운명테라피/g, "SajuMuse")
+      .replace(/unmyungtherapy/gi, "SajuMuse")
+      .replace(/Unmyung\s*Therapy/gi, "SajuMuse")
       // Whitelist: keep printable ASCII, newlines, CJK, Korean only
       .replace(/[^\x09\x0A\x0D\x20-\x7E\u00B7\u2014\u2022\u4E00-\u9FFF\uAC00-\uD7A3]/g, " ")
       // Clean up empty or near-empty parentheses: (), ( ), (,), ( , )

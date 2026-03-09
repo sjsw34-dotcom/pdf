@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { translateChunkWithRetry } from "@/lib/translator";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     const chunkBuffer = Buffer.from(await res.arrayBuffer());
     const base64Chunk = chunkBuffer.toString("base64");
 
-    // 2. Call Claude to translate
+    // 2. Call Claude to translate (no long waits — 429 retries happen client-side)
     const client = new Anthropic();
     const text = await translateChunkWithRetry(
       client,
@@ -36,6 +36,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ text });
   } catch (error) {
     console.error("Translate chunk error:", error);
+    const status =
+      typeof error === "object" && error !== null && "status" in error
+        ? (error as { status: number }).status
+        : 0;
+
+    // Pass 429 status through so client can handle rate-limit retries
+    if (status === 429) {
+      return NextResponse.json(
+        { error: "Rate limited — please retry", retryable: true },
+        { status: 429 }
+      );
+    }
+
     const message =
       error instanceof Error ? error.message : "An unexpected error occurred";
     return NextResponse.json(

@@ -31,8 +31,8 @@ const SZ_SMALL = 9;
 const SZ_HEADER = 9;
 
 // ─── Brand ────────────────────────────────────────────────────────────────────
-const BRAND_KR = "운명테라피";
-const BRAND_EN = "Unmyung Therapy";
+const BRAND_KR = "SajuMuse";
+const BRAND_EN = "SajuMuse";
 const CONSULTANT = "Ksaju Kim";
 
 // ─── Color palette (navy + gold) ──────────────────────────────────────────────
@@ -325,7 +325,7 @@ function renderIntroPage(doc: jsPDF): void {
   y = renderIntroSection(doc, "What can Saju reveal?", [
     "Saju is not simply a tool for predicting the future. Its true significance lies in helping you better understand yourself by analyzing your personality, strengths and weaknesses, and the flow of your life. You can use it as a reference when making important decisions or to find direction for addressing areas where you may be lacking.",
     "",
-    "At Unmyung Therapy, we aim to help you discover your own unique story through Saju and empower you to make better choices. We will walk you through the path of your life in an approachable and friendly way.",
+    "At SajuMuse, we aim to help you discover your own unique story through Saju and empower you to make better choices. We will walk you through the path of your life in an approachable and friendly way.",
   ], y);
 
   y += SECTION_GAP + 6;

@@ -31,8 +31,8 @@ const SZ_SMALL = 9;
 const SZ_HEADER = 9;
 
 // ─── Brand ────────────────────────────────────────────────────────────────────
-const BRAND_KR = "운명테라피";
-const BRAND_EN = "Unmyung Therapy";
+const BRAND_KR = "SajuMuse";
+const BRAND_EN = "SajuMuse";
 const CONSULTANT = "Ksaju Kim";
 
 // ─── Color palette (rose + purple + gold) ────────────────────────────────────

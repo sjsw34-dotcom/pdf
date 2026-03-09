@@ -8,7 +8,7 @@ import {
 import { generatePDF } from "@/lib/pdf-generator-v2";
 import { generateLovePDF } from "@/lib/pdf-generator-love";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
   try {

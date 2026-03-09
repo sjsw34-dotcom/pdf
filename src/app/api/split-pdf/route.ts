@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { put, del } from "@vercel/blob";
 import { splitPDFIntoChunks } from "@/lib/translator";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
   let chunkUrls: string[] = [];
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Split into 5-page chunks using pdf-lib
-    const pageChunks = await splitPDFIntoChunks(fullBuffer, 15);
+    const pageChunks = await splitPDFIntoChunks(fullBuffer, 25);
 
     // 3. Store each page chunk to blob
     const uploadId = crypto.randomUUID();

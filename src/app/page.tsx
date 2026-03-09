@@ -13,6 +13,7 @@ const CHUNK_SIZE = 3 * 1024 * 1024; // 3MB per chunk
 const DIRECT_LIMIT = 4 * 1024 * 1024; // 4MB — below this, send directly
 const INTER_CHUNK_DELAY_MS = 2000; // 2s between translate-chunk calls
 const MAX_CHUNK_RETRIES = 3; // retry failed chunk translations
+const PARALLEL_BATCH_SIZE = 3; // translate 3 chunks concurrently
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -98,29 +99,18 @@ export default function Home() {
     const { pageChunkUrls, totalChunks } = await splitRes.json();
     console.log(`Split into ${totalChunks} page chunks`);
 
-    // Step 3: Translate each chunk sequentially
+    // Step 3: Translate chunks in parallel batches
     setStatus("translating");
-    const translatedTexts: string[] = [];
+    const translatedTexts: string[] = new Array(totalChunks);
 
-    for (let i = 0; i < totalChunks; i++) {
-      setStatusDetail(`Translating section ${i + 1} of ${totalChunks}...`);
-
-      if (i > 0) {
-        await sleep(INTER_CHUNK_DELAY_MS);
-      }
-
-      let translated = false;
+    const translateOneChunk = async (chunkIndex: number): Promise<void> => {
       let lastError = "";
 
       for (let attempt = 0; attempt < MAX_CHUNK_RETRIES; attempt++) {
         if (attempt > 0) {
-          // Longer backoff for rate limits (429), shorter for other errors
           const backoffMs = lastError.includes("Rate limited")
-            ? 60000 + attempt * 15000 // 60s, 75s, 90s for rate limits
+            ? 60000 + attempt * 15000
             : Math.min(5000 * Math.pow(2, attempt - 1), 30000);
-          setStatusDetail(
-            `Retrying section ${i + 1} of ${totalChunks} (attempt ${attempt + 1}, waiting ${Math.round(backoffMs / 1000)}s)...`
-          );
           await sleep(backoffMs);
         }
 
@@ -129,30 +119,52 @@ export default function Home() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              url: pageChunkUrls[i],
-              chunkNum: i + 1,
+              url: pageChunkUrls[chunkIndex],
+              chunkNum: chunkIndex + 1,
               totalChunks,
             }),
           });
 
           if (!translateRes.ok) {
             const data = await translateRes.json();
-            lastError = data.error || `Translation of chunk ${i + 1} failed`;
+            lastError = data.error || `Translation of chunk ${chunkIndex + 1} failed`;
             continue;
           }
 
           const { text } = await translateRes.json();
-          translatedTexts.push(text);
-          translated = true;
-          break;
+          translatedTexts[chunkIndex] = text;
+          return;
         } catch (err) {
           lastError =
-            err instanceof Error ? err.message : `Chunk ${i + 1} network error`;
+            err instanceof Error ? err.message : `Chunk ${chunkIndex + 1} network error`;
         }
       }
 
-      if (!translated) {
-        throw new Error(lastError || `Translation of chunk ${i + 1} failed after ${MAX_CHUNK_RETRIES} attempts`);
+      throw new Error(lastError || `Translation of chunk ${chunkIndex + 1} failed after ${MAX_CHUNK_RETRIES} attempts`);
+    };
+
+    // Process in parallel batches
+    for (let batchStart = 0; batchStart < totalChunks; batchStart += PARALLEL_BATCH_SIZE) {
+      const batchEnd = Math.min(batchStart + PARALLEL_BATCH_SIZE, totalChunks);
+      const batchIndices = Array.from({ length: batchEnd - batchStart }, (_, i) => batchStart + i);
+
+      setStatusDetail(
+        `Translating sections ${batchStart + 1}–${batchEnd} of ${totalChunks} (parallel)...`
+      );
+
+      if (batchStart > 0) {
+        await sleep(INTER_CHUNK_DELAY_MS);
+      }
+
+      const results = await Promise.allSettled(
+        batchIndices.map((idx) => translateOneChunk(idx))
+      );
+
+      // Check for failures
+      const failed = results.filter((r) => r.status === "rejected");
+      if (failed.length > 0) {
+        const reason = (failed[0] as PromiseRejectedResult).reason;
+        throw reason instanceof Error ? reason : new Error(String(reason));
       }
     }
 

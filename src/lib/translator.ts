@@ -144,6 +144,18 @@ Forbidden:
 - Fragmented or cut-off sentences
 - Hanja alone without Korean hangul or English alongside
 
+## RULE 7: Brand Replacement
+- Replace ALL occurrences of "운명테라피", "unmyungtherapy", or "Unmyung Therapy" with "SajuMuse"
+- This applies to headers, footers, body text, greetings, and any other location
+- The consultant name "Ksaju Kim" should remain unchanged
+
+## RULE 8: Chunk Continuity
+When translating a multi-part document:
+- Maintain consistent terminology across all parts — use the EXACT same English translations for recurring Korean terms
+- Do NOT repeat introductory content or greetings that appeared in earlier parts
+- If a section was clearly started in a previous chunk, continue naturally without re-introducing it
+- Ensure smooth transitions — the final output will be combined sequentially
+
 ## Translation Rules
 1. Translate ALL content — every section, table, chart, diagram text
 2. Use the terminology formats specified in Rule 1 above

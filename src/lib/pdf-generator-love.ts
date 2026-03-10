@@ -492,7 +492,7 @@ function renderIllustration(doc: jsPDF, imageBase64: string, alias: string, y: n
 }
 
 // ─── Content renderer ─────────────────────────────────────────────────────────
-function renderContent(doc: jsPDF, content: string, y: number, customText?: string): number {
+function renderContent(doc: jsPDF, content: string, y: number): number {
   doc.setFontSize(SZ_BODY);
   doc.setFont("NotoSansKR", "normal");
   setColor(doc, C_TEXT, "text");
@@ -536,27 +536,6 @@ function renderContent(doc: jsPDF, content: string, y: number, customText?: stri
         }
         y += 1;
         i++;
-      }
-      // Insert custom text after TOC if provided
-      if (customText && customText.trim()) {
-        y += 4;
-        y = renderContentH2(doc, "Additional Notes", y);
-        y += 2;
-        doc.setFont("NotoSansKR", "normal");
-        doc.setFontSize(SZ_BODY);
-        setColor(doc, C_TEXT, "text");
-        const customLines = customText.trim().split("\n");
-        for (const cl of customLines) {
-          const trimCl = cl.trim();
-          if (!trimCl) { y += 4; continue; }
-          const wrapped = doc.splitTextToSize(trimCl, _cW - 8);
-          for (const line of wrapped) {
-            if (y > CONTENT_BOTTOM) { addPageWithBg(doc); y = CONTENT_TOP; }
-            doc.text(line, _mL + 8, y);
-            y += LINE_H;
-          }
-          y += 1.5;
-        }
       }
       addPageWithBg(doc);
       y = CONTENT_TOP;
@@ -741,6 +720,30 @@ export async function generateLovePDF(translation: TranslationResult): Promise<B
   setupPage();
   renderIntroPage(doc, introIll);
 
+  // ── Custom text page (inserted right after intro, before content) ──────
+  if (translation.customText && translation.customText.trim()) {
+    doc.addPage();
+    setupPage();
+    let cy = CONTENT_TOP;
+    cy = renderContentH2(doc, "Additional Notes", cy);
+    cy += 2;
+    doc.setFont("NotoSansKR", "normal");
+    doc.setFontSize(SZ_BODY);
+    setColor(doc, C_TEXT, "text");
+    const customLines = translation.customText.trim().split("\n");
+    for (const cl of customLines) {
+      const trimCl = cl.trim();
+      if (!trimCl) { cy += 4; continue; }
+      const wrapped = doc.splitTextToSize(trimCl, _cW - 8);
+      for (const line of wrapped) {
+        if (cy > CONTENT_BOTTOM) { addPageWithBg(doc); cy = CONTENT_TOP; }
+        doc.text(line, _mL + 8, cy);
+        cy += LINE_H;
+      }
+      cy += 1.5;
+    }
+  }
+
   // ── Pages 3+: Content ────────────────────────────────────────────────────
   // Determine midpoint for inserting illustration between sections
   const midIdx = Math.floor(translation.sections.length / 2);
@@ -756,7 +759,7 @@ export async function generateLovePDF(translation: TranslationResult): Promise<B
     y = renderSectionTitle(doc, cleanTitle, y);
     y += 6;
 
-    y = renderContent(doc, section.content, y, i === 0 ? translation.customText : undefined);
+    y = renderContent(doc, section.content, y);
 
     // Insert couple illustration at midpoint of sections
     if (i === midIdx && sectionIll) {

@@ -444,7 +444,7 @@ function renderContentH3(doc: jsPDF, title: string, y: number): number {
 }
 
 // ─── Content renderer ─────────────────────────────────────────────────────────
-function renderContent(doc: jsPDF, content: string, y: number, customText?: string): number {
+function renderContent(doc: jsPDF, content: string, y: number): number {
   doc.setFontSize(SZ_BODY);
   doc.setFont("NotoSansKR", "normal");
   setColor(doc, C_TEXT, "text");
@@ -491,28 +491,7 @@ function renderContent(doc: jsPDF, content: string, y: number, customText?: stri
         y += 1;
         i++;
       }
-      // Insert custom text after TOC if provided
-      if (customText && customText.trim()) {
-        y += 4;
-        y = renderContentH2(doc, "Additional Notes", y);
-        y += 2;
-        doc.setFont("NotoSansKR", "normal");
-        doc.setFontSize(SZ_BODY);
-        setColor(doc, C_TEXT, "text");
-        const customLines = customText.trim().split("\n");
-        for (const cl of customLines) {
-          const trimCl = cl.trim();
-          if (!trimCl) { y += 4; continue; }
-          const wrapped = doc.splitTextToSize(trimCl, _cW - 8);
-          for (const line of wrapped) {
-            if (y > CONTENT_BOTTOM) { addPageWithBg(doc); y = CONTENT_TOP; }
-            doc.text(line, _mL + 8, y);
-            y += LINE_H;
-          }
-          y += 1.5;
-        }
-      }
-      // Force new page after TOC (+ custom text)
+      // Force new page after TOC
       addPageWithBg(doc);
       y = CONTENT_TOP;
       continue;
@@ -665,6 +644,30 @@ export async function generatePDF(translation: TranslationResult): Promise<Buffe
   setupPage();
   renderIntroPage(doc);
 
+  // ── Custom text page (inserted right after intro, before content) ──────
+  if (translation.customText && translation.customText.trim()) {
+    doc.addPage();
+    setupPage();
+    let cy = CONTENT_TOP;
+    cy = renderContentH2(doc, "Additional Notes", cy);
+    cy += 2;
+    doc.setFont("NotoSansKR", "normal");
+    doc.setFontSize(SZ_BODY);
+    setColor(doc, C_TEXT, "text");
+    const customLines = translation.customText.trim().split("\n");
+    for (const cl of customLines) {
+      const trimCl = cl.trim();
+      if (!trimCl) { cy += 4; continue; }
+      const wrapped = doc.splitTextToSize(trimCl, _cW - 8);
+      for (const line of wrapped) {
+        if (cy > CONTENT_BOTTOM) { addPageWithBg(doc); cy = CONTENT_TOP; }
+        doc.text(line, _mL + 8, cy);
+        cy += LINE_H;
+      }
+      cy += 1.5;
+    }
+  }
+
   // ── Pages 3+: Content (each section starts on its own page) ──────────────
   for (let i = 0; i < translation.sections.length; i++) {
     const section = translation.sections[i];
@@ -678,8 +681,7 @@ export async function generatePDF(translation: TranslationResult): Promise<Buffe
     y += 6;
 
     // Overflow pages inside renderContent are handled via _pageBgPainter.
-    // Pass customText only on the first section so it's inserted after the TOC
-    y = renderContent(doc, section.content, y, i === 0 ? translation.customText : undefined);
+    y = renderContent(doc, section.content, y);
   }
 
   _pageBgPainter = null;

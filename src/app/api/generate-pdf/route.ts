@@ -17,10 +17,12 @@ export async function POST(request: NextRequest) {
       texts,
       type = "general",
       pageChunkUrls = [],
+      customText = "",
     }: {
       texts: string[];
       type?: "general" | "love";
       pageChunkUrls?: string[];
+      customText?: string;
     } = body;
 
     if (!texts || texts.length === 0) {
@@ -36,7 +38,7 @@ export async function POST(request: NextRequest) {
     const sections = parseIntoSections(cleaned);
     const clientName = extractClientName(cleaned);
 
-    const translation = { translatedText: cleaned, sections, clientName };
+    const translation = { translatedText: cleaned, sections, clientName, customText };
 
     // 2. Generate PDF using appropriate generator
     const pdfBuffer =

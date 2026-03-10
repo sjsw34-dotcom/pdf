@@ -170,6 +170,7 @@ export interface TranslationResult {
   translatedText: string;
   sections: { title: string; content: string }[];
   clientName: string; // extracted from "Dear [Name]," greeting
+  customText?: string; // optional text inserted after TOC in PDF
 }
 
 export function extractClientName(text: string): string {

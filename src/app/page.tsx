@@ -25,6 +25,7 @@ export default function Home() {
   const [statusDetail, setStatusDetail] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
+  const [customText, setCustomText] = useState<string>("");
 
   const uploadChunks = async (file: File): Promise<string[]> => {
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
@@ -168,6 +169,21 @@ export default function Home() {
       }
     }
 
+    // Step 3.5: Translate custom text if provided
+    let translatedCustomText = "";
+    if (customText.trim()) {
+      setStatusDetail("Translating additional text...");
+      const textRes = await fetch("/api/translate-text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: customText.trim() }),
+      });
+      if (textRes.ok) {
+        const { translatedText } = await textRes.json();
+        translatedCustomText = translatedText;
+      }
+    }
+
     // Step 4: Generate final PDF
     setStatus("generating");
     setStatusDetail("Generating English PDF...");
@@ -179,6 +195,7 @@ export default function Home() {
         texts: translatedTexts,
         type: reportType,
         pageChunkUrls,
+        customText: translatedCustomText,
       }),
     });
 
@@ -220,6 +237,7 @@ export default function Home() {
     setStatusDetail("");
     setError("");
     setPdfBlob(null);
+    setCustomText("");
   };
 
   const isProcessing = ["extracting", "translating", "generating"].includes(
@@ -294,6 +312,25 @@ export default function Home() {
               </button>
             </div>
             <FileUpload onFileSelect={handleFileSelect} disabled={false} />
+
+            {/* Custom text input */}
+            <div className="mt-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Additional Text (optional)
+              </label>
+              <p className="text-xs text-gray-500 mb-2">
+                Enter Korean text here to include a translated version after the Table of Contents.
+              </p>
+              <textarea
+                value={customText}
+                onChange={(e) => setCustomText(e.target.value)}
+                placeholder="여기에 추가할 한국어 텍스트를 입력하세요..."
+                rows={5}
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-gray-800
+                           placeholder-gray-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100
+                           focus:outline-none transition-all resize-y text-sm"
+              />
+            </div>
           </div>
         )}
 

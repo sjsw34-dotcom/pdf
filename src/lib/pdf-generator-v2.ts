@@ -656,7 +656,11 @@ export async function generatePDF(translation: TranslationResult): Promise<Buffe
     setColor(doc, C_TEXT, "text");
     const customLines = translation.customText.trim().split("\n");
     for (const cl of customLines) {
-      const trimCl = cl.trim();
+      const trimCl = cl.trim()
+        .replace(/^#{1,6}\s*/g, "")   // remove heading markers
+        .replace(/\*\*/g, "")          // remove bold markers
+        .replace(/\*([^*]+)\*/g, "$1") // remove italic markers
+        .replace(/`([^`]+)`/g, "$1");  // remove inline code markers
       if (!trimCl) { cy += 4; continue; }
       const wrapped = doc.splitTextToSize(trimCl, _cW - 8);
       for (const line of wrapped) {
